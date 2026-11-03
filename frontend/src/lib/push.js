@@ -1,11 +1,12 @@
 // Web Push subscribe/unsubscribe — requires a signed-in profile (subscriptions are stored
 // server-side per user, same as everything else under /api).
 import { api } from './api.js'
+import { STATIC } from './demo.js'
 
 // main.jsx registers the service worker on https only, so on any other origin there is no
 // worker and `navigator.serviceWorker.ready` never settles — the toggle looked usable and hung.
 const secureOrigin = () => typeof location === 'undefined' || location.protocol === 'https:'
-export const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && secureOrigin()
+export const pushSupported = () => !STATIC && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && secureOrigin()
 
 const urlBase64ToUint8Array = b64 => {
   const padded = (b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')

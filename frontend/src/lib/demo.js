@@ -10,5 +10,10 @@
 // time, so the demo-only UI folds away and the seed generator — imported dynamically — never
 // lands in a self-hosted bundle.
 export const DEMO = import.meta.env.VITE_DEMO === '1'
+// Static build (VITE_STATIC=1, VERCEL_DEPLOYMENT.md): a real personal tracker on a static host. No
+// server, like the demo, but no example data either: it starts empty and keeps what is logged.
+export const STATIC = import.meta.env.VITE_STATIC === '1'
+export const NO_SERVER = DEMO || STATIC
+export const SOURCE_URL = import.meta.env.VITE_SOURCE_URL || 'https://github.com/DuarteSantos8/openGym'
 export const DEMO_SEEDED = 'gym_demo_seeded_v1'
 export const REPO = 'https://gitlab.com/DuarteSantos8/opengym'

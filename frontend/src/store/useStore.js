@@ -3,7 +3,7 @@ import { api, setRemoteAuth } from '../lib/api.js'
 import { localTZ } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { registerCustom, healCustomEx } from '../lib/exercises.js'
-import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
+import { DEMO, DEMO_SEEDED, STATIC } from '../lib/demo.js'
 import { rememberDefaultLang } from '../lib/default-lang.js'
 import { guestAllowed } from '../lib/guest.js'
 import { stateJson } from '../lib/state-json.js'
@@ -327,15 +327,19 @@ export function restartedState(cur) {
 }
 
 function loadState() {
+  let raw = null
   try {
-    const raw = localStorage.getItem(KEY)
+    raw = localStorage.getItem(KEY)
     if (raw) {
       const saved = JSON.parse(raw)
       const s = sanitizeAccent(Object.assign(clone(DEF), saved))
       if (!saved.lang) s.lang = detectedLang()
       return s
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    // Unreadable: the next save would overwrite it, so a copy stays aside for recovery by hand.
+    try { if (raw) localStorage.setItem(KEY + '_unreadable', raw) } catch { /* no room for it */ }
+  }
   return freshState()
 }
 
@@ -1575,7 +1579,7 @@ export const useStore = create((set, get) => {
       if (MOBILE && S.autoBackup) writeAutoBackup(S)
     },
 
-    isGuest: () => localStorage.getItem('gym_guest') === '1',
+    isGuest: () => STATIC || localStorage.getItem('gym_guest') === '1',
     // Choosing to go on without a server ends whatever was said about the last one.
     setGuest(v) {
       if (v) localStorage.setItem('gym_guest', '1'); else localStorage.removeItem('gym_guest')
@@ -2035,6 +2039,11 @@ export const useStore = create((set, get) => {
         // the choice. Picking local (even with no data yet) persists that choice below and this
         // never asks again.
         finishBoot({ needsMobileOnboarding: !remote && !hasData(get().S) })
+        return
+      }
+      // Static build: no backend and nothing to seed, what is stored here is simply the app's.
+      if (STATIC) {
+        finishBoot()
         return
       }
       // Demo build (GitHub Pages): no backend at all — seed once, stay in guest mode.
