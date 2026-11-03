@@ -1,5 +1,5 @@
 // The saved copy of the state as JSON, written to localStorage on every change (store/useStore.js
-// persist) and to the phone's file mirror (lib/mobile.js nativeSave). The workout history is most
+// persist). The workout history is most
 // of it (a 400-workout profile: ~90 % of 360 KB) and a ticked set never changes it: since update()
 // keeps a field it did not touch as the very same object (draftOf), the history's JSON is kept
 // from the last write while the array is that same object, and only the rest is serialised again.

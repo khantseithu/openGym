@@ -8,12 +8,10 @@ import {
 } from './edge-swipe-back.js'
 
 describe('where it is on', () => {
-  it('the iPhone/iPad app and the iOS home-screen web app only', () => {
-    expect(edgeSwipeEnabled({ mobile: true, platform: 'ios' })).toBe(true)
-    expect(edgeSwipeEnabled({ mobile: true, platform: 'android' })).toBe(false)   // system back
-    expect(edgeSwipeEnabled({ mobile: false, ios: true, standalone: true })).toBe(true)
-    expect(edgeSwipeEnabled({ mobile: false, ios: true, standalone: false })).toBe(false)   // Safari's own swipe
-    expect(edgeSwipeEnabled({ mobile: false, ios: false, standalone: true })).toBe(false)   // Android PWA, desktop
+  it('the iOS home-screen web app only', () => {
+    expect(edgeSwipeEnabled({ ios: true, standalone: true })).toBe(true)
+    expect(edgeSwipeEnabled({ ios: true, standalone: false })).toBe(false)   // Safari's own swipe
+    expect(edgeSwipeEnabled({ ios: false, standalone: true })).toBe(false)   // Android PWA, desktop
   })
 })
 

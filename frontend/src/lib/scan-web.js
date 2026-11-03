@@ -1,6 +1,4 @@
-// Browser-side QR decoding for the gym check-in — the PWA half of lib/scan.js. The app build
-// hands scanning to ML Kit; here in a browser tab (installed PWA on a phone, most often) we do
-// it ourselves: draw the source — an uploaded photo or a live <video> frame — onto an offscreen
+// Browser-side QR decoding for the gym check-in: draw the source — an uploaded photo or a live <video> frame — onto an offscreen
 // canvas and decode the pixels.
 //
 // Two decoders, tried in order:

@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, forwardRef, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams, useLocation, Navigate } from 'react-router-dom'
 import { useStore, DEF, hasData } from '../store/useStore.js'
-import { healthStatus, loadHealth, enableHealth, disableHealth, openHealthConnect, onHealthChange, enableRead, disableRead } from '../lib/health-sync.js'
 import { workoutControls } from '../lib/workout-controls.js'
 import { speedUnitOf } from '../lib/speed.js'
 import { formulaOf, FORMULA_NAMES } from '../lib/onerm.js'
@@ -23,42 +22,28 @@ import { wakeLockSupported } from '../lib/wakelock.js'
 import { t, tn, LANGS, INSTR_LANGS, EXERCISE_NAME_LANGS, baseLang, dateLocale } from '../lib/i18n.js'
 import { effectiveLang } from '../lib/default-lang.js'
 import { DEMO, NO_SERVER, REPO, SOURCE_URL, STATIC } from '../lib/demo.js'
-import { MOBILE, isAndroid, shareExport, shareExportBlob, syncReminder } from '../lib/mobile.js'
 import { NUDGE_COPY, NUDGE_TONES, toneOf } from '../lib/nudge.js'
 import { referencedFiles } from '../lib/media-refs.js'
 import { mediaStore } from '../lib/media-store.js'
 import { syncMedia, fetchToStore } from '../lib/media-sync.js'
 import { getMediaStatus, subscribeMediaStatus, pendingRefCount } from '../lib/media-owed.js'
 import { limitsFrom, fmtMB, MB } from '../lib/media-limits.js'
-import { setRestAccent } from '../lib/rest-alert.js'
 import { CUSTOM, accentKey, adjustedIn, applyAccent, cleanHex, inkOn, isGrey } from '../lib/accent.js'
-import { checkForUpdate, downloadAndInstall, fetchChecksum, forgetDownloadedUpdate, RELEASES_PAGE } from '../lib/update.js'
-import { APK_VARIANT, VARIANT_NAMES } from '../lib/apk-variant.js'
-import { BUILTIN_PX } from '../lib/anim-quality.js'
-import { selfUpdates } from '../lib/channel.js'
-import { forgetCoach } from '../lib/coach-api.js'
 import { coachAvailable } from '../lib/coach.js'
 import { REST_MAX, REST_PAUSE_MIN, REST_PAUSE_MAX, fmtRest, fmtDuration } from '../lib/duration.js'
 import { starterPlanSheet, confirmSheet, importFromApp, importFromHevy, equipmentProfileSheet, plateInventorySheet, dumbbellInventorySheet, barDefaultsSheet, menuSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { durationSheet } from '../components/DurationWheel.jsx'
 import { showsConnection, showsLocalLine } from '../components/SyncBanner.jsx'
-import BackupFolderRow, { useBackupFolder, autoBackupSubtitle } from '../components/BackupFolderRow.jsx'
-import AppIconRow from '../components/AppIconRow.jsx'
-import { AnimationQualityRow } from '../components/Animations.jsx'
-import { ServerSyncSection, KeptChangesRows, leaveServer, connectServer, passkeySignIn } from '../components/ServerSync.jsx'
+import { ServerSyncSection, KeptChangesRows, leaveServer, passkeySignIn } from '../components/ServerSync.jsx'
 import { passwordOn, PasswordRow, openPasswordSignIn, openPasswordRegister } from '../components/PasswordAuth.jsx'
-import { usePasskeys, PasskeysRow, DeviceLinkRow, openDeviceLinkRedeem, PairSheet } from '../components/Passkeys.jsx'
+import { usePasskeys, PasskeysRow, DeviceLinkRow, openDeviceLinkRedeem } from '../components/Passkeys.jsx'
 import { DeleteAccountRow } from '../components/DeleteAccount.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField, SearchField } from '../components/ui.jsx'
-import { PAGES, ROOT_GROUPS, pageVisible, searchSettings, pageTrail } from './settings-pages.js'
-import { platformNow } from '../lib/platform-now.js'
+import { PAGES, ROOT_GROUPS, pageVisible, searchSettings } from './settings-pages.js'
 import { pathBefore } from '../lib/nav.js'
-import WatchSettingsPage from './WatchSettings.jsx'
 import { reportSheet } from '../components/ReportSheet.jsx'
 import { csvExportSheet } from '../components/CsvExportSheet.jsx'
-import GymReminderPage, { GymEditPage } from './GymReminder.jsx'
-import { readGymConfig } from '../lib/gym-reminder.js'
 import { THEMES, inSeason, seasonChoice, activeSeason } from '../lib/seasonal.js'
 
 /* Settings (v1.3.11). The root is one screen: an account card, eleven rows that each open a page
@@ -74,16 +59,12 @@ import { THEMES, inSeason, seasonChoice, activeSeason } from '../lib/seasonal.js
 let lastQuery = { q: '', key: null }
 
 // The route: /settings and /settings/<page>. An unknown page, or one this device does not have
-// (the Coach page off the phone app), goes back to the root.
+// (the Coach page), goes back to the root.
 export function SettingsRoute() {
   const { page } = useParams()
   const loc = useLocation()
-  // `ios` now, not after an async platform check: the Apple Watch page is iPhone only, and a route
-  // that did not know yet sent every visit to it straight back to the root.
-  // (Unknown counts as yes inside the phone app: the page itself then says there is no watch.)
-  const ctx = { user: useStore(s => s.user), mobile: MOBILE, ios: MOBILE && platformNow() !== 'android' }
+  const ctx = { user: useStore(s => s.user) }
   if (page && (!PAGES[page] || !pageVisible(PAGES[page].parent || page, ctx) || !pageVisible(page, ctx))) return <Navigate to="/settings" replace />
-  if (page === 'coach') return <Navigate to="/coach/setup" replace />
   return <Settings key={page || 'root'} page={page || null} find={loc.state?.find || null} via={loc.state?.via || null} entryKey={loc.key} />
 }
 
@@ -92,7 +73,7 @@ const shortWeekday = day => {
   try { return new Intl.DateTimeFormat(dateLocale(), { weekday: 'short' }).format(new Date(2024, 0, day === 0 ? 7 : 1)) } catch { return day === 0 ? 'Sun' : 'Mon' }
 }
 
-// Running as an installed app (home-screen web app or the phone app): no install tip then.
+// Running as an installed home-screen web app: no install tip then.
 const standalone = () => {
   try { return !!(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true) } catch { return false }
 }
@@ -106,7 +87,6 @@ export default function Settings({ page = null, find = null, via = null, entryKe
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const sync = useStore(s => s.sync)
-  const coachLocal = useStore(s => s.coachLocal)
   // Name-and-password sign-in, where the instance offers it (#118).
   const config = useStore(s => s.config)
   const pwOn = passwordOn(config)
@@ -125,8 +105,6 @@ export default function Settings({ page = null, find = null, via = null, entryKe
   const importRef = useRef(null)
   const body = useRef(null)
   const wakeOK = wakeLockSupported()
-  // The gym reminder's switch lives on its own page and on this device only (lib/gym-reminder.js).
-  const gymOn = MOBILE && readGymConfig().on
 
   // A planner's own queue (no rotationId, or one that doesn't match the saved rotation here) is
   // not this app's to switch off or overwrite. The Scheduling row goes read-only for it.
@@ -172,34 +150,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
     // saved sequence, or a malformed queue Plan has to sort out) the choice holds and you stay
     // here: the page then offers the way to Plan (below), so picking a value never leaves it.
     update(s => { chooseRotation(s) })
-  }
-
-  // --- update check state ---
-  const [updateInfo, setUpdateInfo] = useState(null) // { hasUpdate, latestVersion, apkUrl, hashUrl } | null
-  const [android, setAndroid] = useState(false)
-  const [ios, setIos] = useState(() => MOBILE && platformNow() === 'ios')   // the iPhone app: Settings → Apple Watch
-  const [selfUpdate, setSelfUpdate] = useState(false)   // the sideloaded APK, which updates itself
-  const [checking, setChecking] = useState(false)
-  // Where auto-backup writes on this Android phone, for the Auto-backup row's own subtitle.
-  const [backupDir] = useBackupFolder(MOBILE && android && !!S.autoBackup)
-
-  useEffect(() => {
-    // The in-app updater installs an .apk, so it only applies to the native Android build.
-    // On iOS and the web this check is skipped and the update row never appears. isAndroid()
-    // already answers false off the mobile build; the MOBILE check on top keeps the web bundle
-    // from even asking (and from calling GitHub on every Settings visit). Only the pages
-    // that show it ask: the root (for nothing but `android`) skips the release check.
-    // The Google Play build is updated by Play (lib/channel.js): no update row there either.
-    if (!MOBILE) return
-    isAndroid().then(async ok => {
-      setAndroid(ok)
-      setIos(!ok)
-      const own = ok && await selfUpdates()
-      setSelfUpdate(own)
-      // Nothing newer: an update APK still in the cache is the one already installed.
-      if (own && page === 'about') checkForUpdate().then(info => { setUpdateInfo(info); if (!info?.hasUpdate) forgetDownloadedUpdate() }).catch(() => {})
-    })
-  }, [page])
+  };
 
   // A search hit: scroll its row (or button) into view and flash it once. A row that shows only
   // once the page has heard back from the server (web push, the passkey list) is waited for a
@@ -233,72 +184,13 @@ export default function Settings({ page = null, find = null, via = null, entryKe
     return () => { done = true; mo?.disconnect(); clearTimeout(wait); clearTimeout(tm) }
   }, [find])
 
-  // The same check, on demand: the automatic one is silent when it finds nothing or cannot
-  // reach GitHub, and a person who taps "Check for updates" deserves an answer either way.
-  const checkNow = async () => {
-    if (checking) return
-    setChecking(true)
-    try {
-      const info = await checkForUpdate()
-      setUpdateInfo(info)
-      if (!info.hasUpdate) { toast(t('You have the latest version.')); forgetDownloadedUpdate() }
-    } catch {
-      toast(t('Couldn’t check for updates. Are you online?'))
-    }
-    setChecking(false)
-  }
-
-  const onUpdateRowClick = () => {
-    if (!updateInfo?.hasUpdate) return
-    if (updateInfo.apkUrl) {
-      // Start download & install
-      const version = updateInfo.latestVersion
-      confirmSheet({
-        title: t('Update to {0}?', version),
-        message: t('The latest version will be downloaded and the installer will open.'),
-        confirmText: t('Download & Install'),
-        onConfirm: async () => {
-          // Open a progress sheet
-          let closeProgress = null
-          let setProgress = null
-          useUI.getState().openSheet(close => {
-            closeProgress = close
-            return <DownloadProgress ref={fn => { setProgress = fn }} />
-          }, { locked: true })
-          try {
-            // The release always publishes the checksum next to the APK. Without it the file is
-            // not installed — a sideloaded binary is exactly the thing that should be verified.
-            let expectedHash = null
-            try { expectedHash = await fetchChecksum(updateInfo.hashUrl) } catch (e) { /* reported below */ }
-            if (!/^[0-9a-f]{64}$/i.test(expectedHash || '')) throw new Error(t('Checksum not available, so not installing'))
-            await downloadAndInstall(updateInfo.apkUrl, expectedHash, (received, total) => {
-              if (setProgress) setProgress(received, total)
-            })
-            if (closeProgress) closeProgress()
-          } catch (e) {
-            if (closeProgress) closeProgress()
-            toast(t('Update failed: {0}', e.message))
-          }
-        },
-      })
-    } else {
-      // Update available but no APK asset — open the releases page
-      window.open(RELEASES_PAGE, '_blank', 'noopener')
-    }
-  }
-
   // Reads the store at the moment of the tap: the sheet that asks before a sign-out offers it too,
   // and the copy it exports is the one that has not reached the server.
   const doExport = async () => {
     const json = JSON.stringify(useStore.getState().S, null, 2)
     const name = 'opengym-backup-' + todayISO() + '.json'
-    // WKWebView can't download blob URLs — the native build hands the file to the share sheet.
-    if (MOBILE) {
-      try { await shareExport(json, name); toast(t('Backup exported')) } catch (e) { /* share sheet dismissed */ }
-      return
-    }
     const blob = new Blob([json], { type: 'application/json' })
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
+    const a = document.createElement('a');a.href = URL.createObjectURL(blob);a.download = name;a.click();URL.revokeObjectURL(a.href)
     toast(t('Backup exported'))
   }
   // "Export with photos & videos": the same JSON plus every file the state refers to, in a zip
@@ -313,11 +205,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
     catch { toast(t('Something went wrong')); return }
     const name = 'opengym-backup-' + todayISO() + '.zip'
     if (out.missing) toast(tn('{0} file could not be included', '{0} files could not be included', out.missing))
-    if (MOBILE) {
-      try { await shareExportBlob(out.blob, name); if (!out.missing) toast(t('Backup exported')) } catch (e) { /* share sheet dismissed */ }
-      return
-    }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(out.blob); a.download = name; a.click()
+    const a = document.createElement('a');a.href = URL.createObjectURL(out.blob);a.download = name;a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 60000)
     if (!out.missing) toast(t('Backup exported'))
   }
@@ -387,12 +275,6 @@ export default function Settings({ page = null, find = null, via = null, entryKe
   // A workout running here is kept aside by the sign-out (useStore stashActive): the confirm says so.
   const running = () => S.active ? ' ' + t('You have a workout running. It waits on this device until you’re back on this account.') : ''
   const leave = (kind, after) => leaveServer(kind, { exportBackup: doExport, exportBackupZip: doExportZip, done: r => { nav('/home'); if (r.stashed) toast(kept); else if (after) toast(after) } })
-  const disconnect = () => confirmSheet({
-    title: t('Disconnect from your server?'),
-    message: t('This phone switches back to local-only and its copy of your account is removed. First it checks that your server has every change. If not, you choose what happens to them.') + running(),
-    confirmText: t('Disconnect'), danger: true,
-    onConfirm: () => leave('disconnect', t('Disconnected. Back to local-only')),
-  })
   const signOutHere = () => confirmSheet({
     title: t('Sign out?'),
     message: t('Your data is removed from this browser; your profile on the server keeps it. First it checks that the server has every change. If not, you choose what happens to them.') + running(),
@@ -419,7 +301,6 @@ export default function Settings({ page = null, find = null, via = null, entryKe
     confirmText: t('Delete everything'), danger: true,
     onConfirm: () => {
       if (user) api('/api/coach/forget', { method: 'POST', body: '{}' }).catch(() => {})
-      if (coachLocal?.mode === 'byok') forgetCoach().catch(() => {})
       resetAll()
       nav('/home'); toast(t('All data reset'))
       clearMediaAfterReset(!!user).catch(() => {})
@@ -429,11 +310,27 @@ export default function Settings({ page = null, find = null, via = null, entryKe
   /* ---------------- what the pages and the search need to know about this device ---------------- */
   const canVibrate = vibrateSupported()
   const ctx = {
-    user, mobile: MOBILE, android, ios: MOBILE && ios, appIcons: MOBILE && platformNow() === 'ios', demo: DEMO, static: STATIC, wakeOK, hasMedia, pwOn, webauthn: webauthnOK(),
-    sound: !!S.sound, playOnSilent: playOnSilentSupported(), canVibrate, vibrate: S.vibrate !== false,
-    profiles: (S.equipProfiles || []).length > 0, nameLang: EXERCISE_NAME_LANGS.includes(baseLang(lang)),
-    pushOK: !MOBILE && pushSupported(), reminderOn: !!S.reminder?.on, nudge: !!S.reminder?.nudge,
-    autoBackup: !!S.autoBackup, synced: !!sync, installTip: !MOBILE && !standalone(), androidWeb: IS_ANDROID, desktopWeb: !IS_ANDROID && !APPLE_UA,
+    user,
+    demo: DEMO,
+    static: STATIC,
+    wakeOK,
+    hasMedia,
+    pwOn,
+    webauthn: webauthnOK(),
+    sound: !!S.sound,
+    playOnSilent: playOnSilentSupported(),
+    canVibrate,
+    vibrate: S.vibrate !== false,
+    profiles: (S.equipProfiles || []).length > 0,
+    nameLang: EXERCISE_NAME_LANGS.includes(baseLang(lang)),
+    pushOK: pushSupported(),
+    reminderOn: !!S.reminder?.on,
+    nudge: !!S.reminder?.nudge,
+    autoBackup: !!S.autoBackup,
+    synced: !!sync,
+    installTip: !standalone(),
+    androidWeb: IS_ANDROID,
+    desktopWeb: !IS_ANDROID && !APPLE_UA
   }
   const mode = scheduleModeOf(S)
   const layout = ['list', 'compact', 'focus'].includes(S.workoutView) ? S.workoutView : 'cards'
@@ -449,10 +346,8 @@ export default function Settings({ page = null, find = null, via = null, entryKe
     units: () => (S.unit || 'kg') + ' · ' + (LANGS[lang] || lang),
     equipment: () => (S.equipFilterOn && activeProfile ? activeProfile.name : ownsNoDumbbells(S) ? t('Everything but dumbbells') : t('Everything')),
     look: () => themeLabel + ' · ' + accentLabel(S),
-    coach: () => (coachLocal?.mode === 'server' ? t('Your server') : coachLocal?.mode === 'byok' ? t('Your API key') : t('Off')),
     data: () => '',
     about: () => 'v' + __APP_VERSION__,
-    watch: () => '',
   }
 
   const open = id => {
@@ -505,9 +400,6 @@ export default function Settings({ page = null, find = null, via = null, entryKe
     })} />
 
   const pages = {
-    watch: () => <WatchSettingsPage />,
-    gym: () => <GymReminderPage />,
-    'gym-edit': () => <GymEditPage />,
     workout: () => <>
       <Section title={t('Rest')} footer={t('Each exercise can have its own rest too. Set it in the exercise settings of a routine.')}>
         {restRow}
@@ -562,13 +454,11 @@ export default function Settings({ page = null, find = null, via = null, entryKe
           subtitle={t('Asks for your body weight when a workout starts. Off starts the session straight away.')}>
           <Switch checked={S.weighIn !== false} onChange={v => update(s => { s.weighIn = v })} />
         </Row>
-        {(wakeOK || !MOBILE) && (
-          <Row icon="phoneScreen" iconTint="var(--yellow)" title={t('Keep screen awake')}
-            subtitle={wakeOK ? t('The screen stays on while a workout is running, so you don’t have to unlock your phone between sets.') : t('Not supported in this browser.')}>
-            <Switch checked={wakeOK && S.keepAwake !== false} disabled={!wakeOK}
-              onChange={v => update(s => { s.keepAwake = v })} />
-          </Row>
-        )}
+        {(<Row icon="phoneScreen" iconTint="var(--yellow)" title={t('Keep screen awake')}
+          subtitle={wakeOK ? t('The screen stays on while a workout is running, so you don’t have to unlock your phone between sets.') : t('Not supported in this browser.')}>
+          <Switch checked={wakeOK && S.keepAwake !== false} disabled={!wakeOK}
+            onChange={v => update(s => { s.keepAwake = v })} />
+        </Row>)}
         {/* 'full'/'mini' is also what the tap-toggle on the workout animation writes; 'off' hides
             workout media entirely (library, detail sheet and picker thumbs are unaffected).
             Legacy/unknown values read as 'full'. */}
@@ -580,7 +470,6 @@ export default function Settings({ page = null, find = null, via = null, entryKe
         </Row>
         {/* Store apps: how sharp the animations are, from packs this device downloads. Per device,
             never synced: the profile is not touched (components/Animations.jsx). */}
-        <AnimationQualityRow />
       </Section>
       <Section>
         <Row icon="wrench" iconTint="var(--grey)" title={t('Fine-tuning')} subtitle={t('Buttons, timed sets')} accessory="chevron" onClick={() => open('advanced')} />
@@ -654,58 +543,50 @@ export default function Settings({ page = null, find = null, via = null, entryKe
 
     alerts: () => {
       const iPhone = appleTouchDevice()
-      return <>
-        <Section title={t('When a rest ends')}>
-          <Row icon="speaker" iconTint="var(--pink)" title={t('Play a sound')}>
-            {/* Turning the sound on is a tap: unlock the audio context now so a timer that ends
-                before the next set check can already sound (iOS, #152). */}
-            <Switch checked={!!S.sound} onChange={v => { if (v) unlock(true); update(s => { s.sound = v }) }} />
-          </Row>
-          {/* The chime that replaced the original three beeps (Discord: "too quiet under music")
-              is not an improvement for everyone: louder is a cost with headphones or in a quiet
-              room, and some want a sound that feels like theirs (#306). The chime by default; the
-              sheet plays each one as you tap it (restSoundSheet). */}
-          {S.sound && <Row icon="speaker" iconTint="var(--pink)" title={t('Sound')} value={t(REST_SOUND_LABEL[restSoundOf(S)])}
-            accessory="chevron" onClick={restSoundSheet} />}
-          {/* iOS only (WebKit's audio-session API, iOS 17+): with it off the ring/silent switch
-              mutes the timer. On, the phone treats the timer like a music player (exclusive, and
-              the music app is not told it may resume), so it is a choice, off by default. */}
-          {S.sound && playOnSilentSupported() && (
-            <Row icon="speaker" iconTint="var(--orange)" title={t('Play even on silent')}
-              subtitle={<>{t('Music playing on this phone stops during a workout and does not resume by itself.')}<br />{t('iPhone only')}</>}>
-              <Switch checked={!!S.soundOnSilent} onChange={v => update(s => { s.soundOnSilent = v })} />
+      return (
+        <>
+          <Section title={t('When a rest ends')}>
+            <Row icon="speaker" iconTint="var(--pink)" title={t('Play a sound')}>
+              {/* Turning the sound on is a tap: unlock the audio context now so a timer that ends
+                  before the next set check can already sound (iOS, #152). */}
+              <Switch checked={!!S.sound} onChange={v => { if (v) unlock(true); update(s => { s.sound = v }) }} />
             </Row>
-          )}
-        </Section>
-        {/* The buzz at the end of a rest or a hold and on a set tick, on its own switch like the
-            sound (Discord, asierlama). iOS has no navigator.vibrate: the row stays, greyed out,
-            and says so, instead of an iPhone user looking for a setting that is not there. */}
-        <Section footer={!canVibrate && iPhone ? t('iPhone doesn’t let openGym vibrate. A sound or a flash does the job.') : null}>
-          <Row icon="vibrate" iconTint="var(--indigo)" title={t('Vibrate')} className={canVibrate ? '' : 'dis'}
-            subtitle={canVibrate ? null : iPhone ? t('Not on iPhone') : t('Not supported in this browser.')}>
-            <Switch checked={canVibrate && S.vibrate !== false} disabled={!canVibrate} onChange={v => update(s => { s.vibrate = v })} />
-          </Row>
-          {/* Android app only (#375), and only shown there, so it needs no "Android app only" hint: silent mode mutes the ordinary buzz and the notification's,
-              so the end of a rest or a hold can buzz as an alarm instead. Opt-in, like the iOS row
-              above: an alarm-class buzz is the most insistent thing an app can do on some phones. */}
-          {MOBILE && android && canVibrate && S.vibrate !== false && (
-            <Row icon="vibrate" iconTint="var(--indigo)" title={t('Vibrate on silent too')}
-              subtitle={t('The end of a rest or a hold buzzes like an alarm, even in silent mode.')}>
-              <Switch checked={!!S.vibrateOnSilent} onChange={v => update(s => { s.vibrateOnSilent = v })} />
+            {/* The chime that replaced the original three beeps (Discord: "too quiet under music")
+                is not an improvement for everyone: louder is a cost with headphones or in a quiet
+                room, and some want a sound that feels like theirs (#306). The chime by default; the
+                sheet plays each one as you tap it (restSoundSheet). */}
+            {S.sound && <Row icon="speaker" iconTint="var(--pink)" title={t('Sound')} value={t(REST_SOUND_LABEL[restSoundOf(S)])}
+              accessory="chevron" onClick={restSoundSheet} />}
+            {/* iOS only (WebKit's audio-session API, iOS 17+): with it off the ring/silent switch
+                mutes the timer. On, the phone treats the timer like a music player (exclusive, and
+                the music app is not told it may resume), so it is a choice, off by default. */}
+            {S.sound && playOnSilentSupported() && (
+              <Row icon="speaker" iconTint="var(--orange)" title={t('Play even on silent')}
+                subtitle={<>{t('Music playing on this phone stops during a workout and does not resume by itself.')}<br />{t('iPhone only')}</>}>
+                <Switch checked={!!S.soundOnSilent} onChange={v => update(s => { s.soundOnSilent = v })} />
+              </Row>
+            )}
+          </Section>
+          {/* The buzz at the end of a rest or a hold and on a set tick, on its own switch like the
+              sound (Discord, asierlama). iOS has no navigator.vibrate: the row stays, greyed out,
+              and says so, instead of an iPhone user looking for a setting that is not there. */}
+          <Section footer={!canVibrate && iPhone ? t('iPhone doesn’t let openGym vibrate. A sound or a flash does the job.') : null}>
+            <Row icon="vibrate" iconTint="var(--indigo)" title={t('Vibrate')} className={canVibrate ? '' : 'dis'}
+              subtitle={canVibrate ? null : iPhone ? t('Not on iPhone') : t('Not supported in this browser.')}>
+              <Switch checked={canVibrate && S.vibrate !== false} disabled={!canVibrate} onChange={v => update(s => { s.vibrate = v })} />
             </Row>
-          )}
-          <Row icon="sun" iconTint="var(--yellow)" title={t('Flash the screen')}>
-            <Switch checked={!!S.timerFlash} onChange={v => update(s => { s.timerFlash = v })} />
-          </Row>
-        </Section>
-      </>
+
+            <Row icon="sun" iconTint="var(--yellow)" title={t('Flash the screen')}>
+              <Switch checked={!!S.timerFlash} onChange={v => update(s => { s.timerFlash = v })} />
+            </Row>
+          </Section>
+        </>
+      );
     },
 
     reminders: () => <>
       <NotificationsCard S={S} update={update} toast={toast} />
-      {MOBILE && <Section footer={t('A nudge when you walk into your gym.')}>
-        <Row icon="mapPin" iconTint="var(--green)" title={t('Gym reminder')} value={gymOn ? t('On') : t('Off')} accessory="chevron" onClick={() => nav('/settings/gym')} />
-      </Section>}
+
     </>,
 
     plan: () => <>
@@ -809,7 +690,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
     equipment: () => <EquipmentCard S={S} update={update} />,
 
     look: () => <>
-      <Section footer={DEMO || MOBILE || !user ? undefined : t('synced with your profile')}>
+      <Section footer={DEMO || !user ? undefined : t('synced with your profile')}>
         <Row icon="moon" iconTint="var(--indigo)" title={t('Theme')}>
           <Segmented
             className="seg-inline"
@@ -828,8 +709,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
           <span className="lrow-v">{accentLabel(S)}</span>
           <AccentSwatches S={S} update={update} />
         </div>
-        {/* The home-screen icon: the phone's own, not synced. iPhone only in 1.4.3 (Android follows). */}
-        {MOBILE && platformNow() === 'ios' && <AppIconRow />}
+
         {/* How the muscle map is drawn. The exercise drawings follow it until they are set below. */}
         <Row icon="figureStrength" iconTint="var(--teal)" title={t('Body diagram')}>
           <Segmented
@@ -905,10 +785,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
         </Section>
       })}
       {/* While Halloween shows, a way to the matching icon in Look & Home (it is there all year). */}
-      {MOBILE && platformNow() === 'ios' && activeSeason(S) === 'halloween' && <Section>
-        <Row icon="pumpkin" iconTint="var(--orange)" title={t('Try the Halloween app icon')} accessory="chevron"
-          onClick={() => nav('/settings/look', { state: { find: 'App icon' } })} />
-      </Section>}
+
     </>,
 
     data: () => <>
@@ -918,16 +795,10 @@ export default function Settings({ page = null, find = null, via = null, entryKe
         <Row icon="note" iconTint="var(--green)" title={t('Performance report (PDF)')} subtitle={t('Charts, totals and every workout of the last days or weeks.')} accessory="chevron" onClick={reportSheet} />
         {/* One row per set for spreadsheets and other apps (#647); our own importer reads it back. */}
         <Row icon="share" iconTint="var(--green)" title={t('Export as spreadsheet (CSV)')} subtitle={t('Workouts, body weight and measurements')} accessory="chevron" onClick={csvExportSheet} />
-        {/* 14 is AUTO_BACKUP_KEEP in lib/mobile.js, written out because the Settings tests mock
-            that module wholesale; mobile.autobackup.test.js pins the two together. */}
-        {MOBILE && <Row icon="folder" iconTint="var(--blue)" title={t('Auto-backup on changes')}
-          subtitle={autoBackupSubtitle(android && S.autoBackup ? backupDir : null, 14)}>
-          <Switch checked={!!S.autoBackup} onChange={v => update(s => { s.autoBackup = v })} />
-        </Row>}
-        {/* Android only: the system folder picker (#161). iOS shows Documents in Files already. */}
-        {MOBILE && android && S.autoBackup && <BackupFolderRow />}
+
+
       </Section>
-      {MOBILE && <HealthConnectCard S={S} toast={toast} android={android} />}
+
       <Section title={t('Bring data in')}>
         <Row icon="download" iconTint="var(--teal)" title={t('Import backup')} accessory="chevron" onClick={() => fileRef.current.click()} />
         <Row icon="download" iconTint="var(--teal)" title={t('Import from another app')}
@@ -948,30 +819,13 @@ export default function Settings({ page = null, find = null, via = null, entryKe
     </>,
 
     about: () => <>
-      {/* Updates. On Android the row is always there: it checks on demand and installs when a
-          release is newer (checksum verified, see onUpdateRowClick). On the web the app updates
-          with its server, so the row points at the APK for the phone instead. iOS and the Google
-          Play build are updated by their store. */}
-      <Section footer={MOBILE ? (selfUpdate ? t('Releases are checked on GitHub. The download is verified against its checksum before the installer opens.') : null) : t('The web app updates together with your server. The Android app installs its own updates from here.')}>
-        {/* The sideloaded APK comes in three kinds that differ only in the animations built in
-            (lib/apk-variant.js): which one this is, so nobody has to guess from the file size. */}
-        <Row icon="info" iconTint="var(--grey)" title={t('Version')} value={'v' + __APP_VERSION__}
-          subtitle={MOBILE && selfUpdate ? t('{0} APK, animations at {1} px', VARIANT_NAMES[APK_VARIANT], BUILTIN_PX) : undefined} />
-        {MOBILE
-          ? selfUpdate && <Row icon="download" iconTint="var(--green)"
-              title={updateInfo?.hasUpdate ? t('Update to openGym v{0}', updateInfo.latestVersion) : t('Check for updates')}
-              subtitle={checking ? t('Checking…') : t('You have v{0}', __APP_VERSION__)}
-              accessory="chevron"
-              onClick={() => (updateInfo?.hasUpdate ? onUpdateRowClick() : checkNow())} />
-          : <Row icon="download" iconTint="var(--green)" title={t('Get the Android app')}
-              subtitle={t('Download the APK from opengym.ch')} accessory="chevron"
-              onClick={() => window.open('https://opengym.ch/#download', '_blank', 'noopener')} />}
+      <Section>
+        <Row icon="info" iconTint="var(--grey)" title={t('Version')} value={'v' + __APP_VERSION__} />
       </Section>
       {/* Support: the project's own donation pages, and on the iPhone a straight line to writing a
           review. Plain links, no pop-up asking for anything (App Store 5.6.1). */}
       <Section title={t('Support openGym')} footer={t('openGym is free: no ads, no subscriptions, no tracking. A coffee keeps it that way.')}>
-        {MOBILE && ios && <Row icon="star" iconTint="var(--orange)" title={t('Rate openGym on the App Store')} accessory="chevron"
-          onClick={() => window.open('https://apps.apple.com/app/id6822275400?action=write-review', '_blank', 'noopener')} />}
+
         <Row icon="heart" iconTint="var(--pink)" title={t('Buy me a coffee')} subtitle="Buy Me a Coffee" accessory="chevron"
           onClick={() => window.open('https://buymeacoffee.com/duartesantos', '_blank', 'noopener')} />
         <Row icon="heart" iconTint="var(--blue)" title="Ko-fi" accessory="chevron"
@@ -979,10 +833,10 @@ export default function Settings({ page = null, find = null, via = null, entryKe
         <Row icon="heart" iconTint="var(--purple)" title="GitHub Sponsors" accessory="chevron"
           onClick={() => window.open('https://github.com/sponsors/DuarteSantos8', '_blank', 'noopener')} />
       </Section>
-      {/* "Add to Home screen": not inside the phone app, and not once it is installed. Safari's
+      {/* "Add to Home screen": not once it is installed. Safari's
           Share menu only on Apple (an iPad says Macintosh too); Windows and Linux get Chrome's
           install icon instead of an iPhone tip. */}
-      {!MOBILE && !standalone() && <Section title={t('Tip')}>
+      {!standalone() && <Section title={t('Tip')}>
         <Row icon="share" iconTint="var(--blue)"
           title={IS_ANDROID ? t('In Chrome: ⋮ menu → Add to Home screen') : APPLE_UA ? t('In Safari: Share → Add to Home Screen') : t('In Chrome or Edge: the install icon in the address bar')}
           subtitle={t('to install openGym as a full-screen app.') + ' ' + (user ? t('Your data syncs with your profile. Sign in anywhere and it’s there.') : t('Guest data stays on this device, so export a backup now and then!'))} />
@@ -1003,25 +857,14 @@ export default function Settings({ page = null, find = null, via = null, entryKe
       {/* The server: which one, which account, how that stands, "Sync now". A paired phone's
           Admin and Disconnect sit in the same block; a browser's account rows follow in their own. */}
       {user && !DEMO && <ServerSyncSection>
-        {MOBILE && <>
-          {user.admin && <Row icon="crown" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
-          {/* A code to sign in on a computer (#551), behind the same proof as in a browser. */}
-          <DeviceLinkRow state={passkeys.st} />
-          <AccountIdRow id={user.id} />
-          <Row icon="signOut" iconTint="var(--red)" title={t('Disconnect')} danger onClick={disconnect} />
-        </>}
+
       </ServerSyncSection>}
 
       {/* account (demo and mobile builds have nothing to sign in to) */}
       {/* A local-only phone has no account to hand another device a code for (#551). */}
-      {!(MOBILE && user) && <Section title={MOBILE ? t('Your data') : DEMO ? t('Demo') : t('Account')}
-        footer={MOBILE ? t('Signing in on your computer too needs your own server. Connect this phone to it, and Add another device then gives the computer a code.') : null}>
-        {MOBILE ? <>
-          <Row icon="lock" iconTint="var(--acc)" title={t('All data stays on this phone')} subtitle={t('No account, no cloud. Back it up anytime in Data & backup.')} />
-          <Row icon="cloud" iconTint="var(--indigo)" title={t('Connect to my server')} subtitle={t('Sync this device to your own self-hosted openGym instead.')} accessory="chevron"
-            onClick={connectServer} />
-          <KeptChangesRows />
-        </> : DEMO ? <>
+      {<Section title={DEMO ? t('Demo') : t('Account')}
+        footer={null}>
+        {DEMO ? <>
           <Row icon="info" iconTint="var(--acc)" title={t('You’re in the demo')} subtitle={t('Example data, stored only in this browser. Go wild and change anything you like.')} />
           <Row icon="reset" iconTint="var(--blue)" title={t('Reset demo data')} accessory="chevron"
             onClick={() => confirmSheet({ title: t('Reset demo data?'), message: t('Puts the example plan, workouts and weigh-ins back the way they started.'), confirmText: t('Reset'), onConfirm: () => { resetDemo(); nav('/home'); toast(t('Demo data reset')) } })} />
@@ -1033,8 +876,6 @@ export default function Settings({ page = null, find = null, via = null, entryKe
           {user.admin && <Row icon="crown" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
           <PasskeysRow state={passkeys.st} changed={credsChanged} />
           <DeviceLinkRow state={passkeys.st} />
-          <Row icon="qr" iconTint="var(--blue)" title={t('Pair the mobile app')} subtitle={t('Connect the openGym app on your phone to this account.')} accessory="chevron"
-            onClick={() => useUI.getState().openSheet(close => <PairSheet close={close} />)} />
           {pwOn && <PasswordRow version={credsV} />}
           <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={signOutHere} />
           <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
@@ -1064,7 +905,7 @@ export default function Settings({ page = null, find = null, via = null, entryKe
       </Section>}
       {/* The connection banner already says this to a guest; the line is for when it is switched
           off, or its × hid it (#454). */}
-      {!user && !NO_SERVER && !MOBILE && !(showsConnection(S) && showsLocalLine(S)) && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode: your data lives only in this browser.')}</p>}
+      {!user && !NO_SERVER && !(showsConnection(S) && showsLocalLine(S)) && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode: your data lives only in this browser.')}</p>}
     </>,
   }
 
@@ -1103,16 +944,15 @@ function SettingsRoot({ ctx, preview, open, user, sync, home, go, entryKey }) {
   const acct = DEMO ? { title: t('Demo'), sub: t('Example data, only in this browser.') }
     : user ? {
       title: user.name || t('Account'),
-      sub: sync && sync.status && sync.status !== 'ok' ? t('Sync needs a look') : MOBILE ? t('Synced with your server') : t('Account, devices and sync'),
+      sub: sync && sync.status && sync.status !== 'ok' ? t('Sync needs a look') : t('Account, devices and sync'),
     }
-    : MOBILE ? { title: t('This phone'), sub: t('All data stays on this phone') }
     : { title: t('Guest'), sub: STATIC ? t('Guest mode: your data lives only in this browser.') : t('Your data lives on this device. Sign in to sync.') }
   const initial = user && !DEMO ? String(user.name || '?').trim().charAt(0).toUpperCase() : null
   const nav = useNavigate()
   // Only while the server offers the Coach (the flag every Coach screen reads): on a box without
   // it the admin dashboard has no Coach card to land on.
   const config = useStore(s => s.config)
-  const adminCoach = !MOBILE && !DEMO && !!user?.admin && coachAvailable(config, user)
+  const adminCoach = !DEMO && !!user?.admin && coachAvailable(config, user)
   return <div className="narrow">
     <div className="sp-nav">
       <button className="sp-back" data-back="/home" onClick={home} aria-label={t('Home')}><Icon name="chevronLeft" /><span>{t('Home')}</span></button>
@@ -1138,9 +978,8 @@ function SettingsRoot({ ctx, preview, open, user, sync, home, go, entryKey }) {
         <Section key={g[0]}>
           {g.map(id => <Row key={id} icon={PAGES[id].icon} iconTint={PAGES[id].tint} title={t(PAGES[id].title)}
             value={preview[id]?.() || null} accessory="chevron" onClick={() => open(id)} className="sp-root-row" />)}
-          {/* The phone app sets up its own Coach on the Coach page beside Look; in a hosted app the
-              Coach is the server's, set up by an admin on the admin dashboard. Its admins get the
-              same row, in the same place, straight to that card; nobody else has anything to set. */}
+          {/* The Coach is the server's, set up by an admin on the admin dashboard. Its admins get a
+              row straight to that card; nobody else has anything to set. */}
           {g[0] === 'look' && adminCoach && <Row icon={PAGES.coach.icon} iconTint={PAGES.coach.tint} title={t(PAGES.coach.title)}
             value={t('Admin')} accessory="chevron" onClick={() => nav('/admin', { state: { section: 'coach' } })} className="sp-root-row" />}
         </Section>
@@ -1164,32 +1003,6 @@ const EFFORT_ROWS = [
 // against. Not where the stepper starts; + walks up from the bottom of the scale.
 const EFFORT_TYPICAL = 2
 
-
-// Download progress sheet — receives a ref callback that exposes a (received, total) setter.
-// Uses forwardRef so the caller can push byte counts in without re-rendering the whole Settings tree.
-const DownloadProgress = forwardRef(function DownloadProgress(_, ref) {
-  const [pct, setPct] = useState(0)
-  const [text, setText] = useState(t('Starting download…'))
-  // Expose a setter the caller can invoke directly
-  if (ref) ref(function update(received, total) {
-    if (total > 0) {
-      const p = Math.min(100, Math.round((received / total) * 100))
-      setPct(p)
-      setText(t('{0} %', p))
-    } else {
-      setText(t('{0} MB', (received / 1_000_000).toFixed(1)))
-    }
-  })
-  return (
-    <div style={{ textAlign: 'center', padding: '8px 0' }}>
-      <h3>{t('Downloading update…')}</h3>
-      <div style={{ margin: '16px 0', height: 6, borderRadius: 3, background: 'var(--fill-3)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: pct + '%', background: 'var(--acc)', borderRadius: 3, transition: 'width .2s' }} />
-      </div>
-      <div className="muted small">{text}</div>
-    </div>
-  )
-})
 
 // Settings → Sound (#306): every end-of-rest sound, each played as it is picked so you hear it
 // before the next rest does. The sheet stays open for the next one; Done closes it. Stored as
@@ -1247,41 +1060,7 @@ function effortHelpSheet() {
 }
 
 function NotificationsCard({ S, update, toast }) {
-  if (MOBILE) return <MobileReminderCard S={S} update={update} toast={toast} />
   return <PushCard S={S} update={update} toast={toast} />
-}
-
-// Mobile build: the reminder is a native local notification scheduled on planned weekdays —
-// no push server involved. The schedule itself is (re)synced by the store on every persist;
-// this card only owns the OS permission prompt when the switch turns on.
-function MobileReminderCard({ S, update, toast }) {
-  // A paired phone checks with the server before a nudge (lib/nudge-check.js); the footer says
-  // so, and that the phone decides when.
-  const paired = useStore(s => !!s.user)
-  const setReminder = patch => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), ...patch, tz: localTZ() } })
-  const toggle = async () => {
-    const on = !S.reminder?.on
-    if (on) {
-      const ok = await syncReminder({ ...S, reminder: { ...(S.reminder || DEF.reminder), on: true } }, true)
-      if (!ok) { toast(t('Could not change notification settings')); return }
-    }
-    setReminder({ on })
-  }
-  return (
-    <Section title={t('Notifications')}
-      footer={S.reminder?.on ? t('Reminds you at this time on days that have a routine planned.') + nudgeNote(S) + (paired && S.reminder?.nudge ? ' ' + t('Logged a workout on another device? Before the nudge goes out, the phone checks with your server whenever it lets the app run in the background. Opening the app always catches up.') : '') : null}>
-      <Row icon="calendar" iconTint="var(--orange)" title={t('Workout day reminder')}>
-        <Switch checked={!!S.reminder?.on} onChange={toggle} aria-label={t('Workout day reminder')} />
-      </Row>
-      {S.reminder?.on && (
-        <Row icon="clock" iconTint="var(--purple)" title={t('Reminder time')}>
-          <input type="time" className="timef" value={S.reminder?.time || DEF.reminder.time}
-            onChange={e => setReminder({ time: e.target.value })} />
-        </Row>
-      )}
-      {S.reminder?.on && <NudgeRows S={S} setReminder={setReminder} />}
-    </Section>
-  )
 }
 
 // The missed-workout nudge (lib/nudge.js): a switch and its tone, under the reminder they ride
@@ -1408,12 +1187,11 @@ function AccentSwatches({ S, update }) {
   const key = accentKey(S)
   const own = cleanHex(S.accentCustom)
   const onCustom = key === CUSTOM
-  const pickPreset = k => { update(s => { s.accent = k }); setRestAccent(k) }
+  const pickPreset = k => { update(s => { s.accent = k }) }
   const pickOwn = hex => {
     const c = cleanHex(hex)
     if (!c || (onCustom && c === own)) return
     update(s => { s.accent = CUSTOM; s.accentCustom = c })
-    setRestAccent(c)
   }
   // The picker sends a colour for every step of a drag (React's onChange is the `input` event).
   // Those only repaint the page; the colour is saved, synced and sent to the native countdown
@@ -1610,118 +1388,3 @@ function RegisterInline({ close, setUser, pushState, pullState, toast }) {
   </>
 }
 
-// Android app: writing finished workouts and weigh-ins to Health Connect (#200), the phone's
-// own store for health data, where other apps can read them. A fact about this phone, kept in
-// its own file (lib/health-sync.js) and not in S, so it never switches on anywhere else. The card
-// stays out of the way on a phone without Health Connect, and only points to installing it on
-// Android 13 and lower, where it is an app of its own. The iPhone app's card is the same switch for
-// Apple Health, which the Apple Watch app also goes by (heart rate per set).
-const HEALTH_COPY = {
-  android: () => ({
-    section: t('Health Connect'), write: t('Write to Health Connect'), open: t('Open Health Connect'),
-    footer: t('Workouts and weigh-ins go to Health Connect when you finish or change them.'),
-    on: t('Writing to Health Connect'), denied: t('Health Connect permission not granted'), failed: t('Could not write to Health Connect'),
-    removeFailed: t('Could not remove it from Health Connect'), stop: t('Stop writing to Health Connect?'),
-    stopSub: t('What openGym already wrote can stay in Health Connect as your data, or be removed from it.'),
-  }),
-  ios: () => ({
-    section: t('Apple Health'), write: t('Write to Apple Health'), open: t('Open Apple Health'),
-    footer: t('Workouts and weigh-ins go to Apple Health when you finish or change them.'),
-    on: t('Writing to Apple Health'), denied: t('Apple Health permission not granted'), failed: t('Could not write to Apple Health'),
-    removeFailed: t('Could not remove it from Apple Health'), stop: t('Stop writing to Apple Health?'),
-    stopSub: t('What openGym already wrote can stay in Apple Health as your data, or be removed from it.'),
-  }),
-}
-
-function HealthConnectCard({ S, toast, android }) {
-  const getState = () => useStore.getState().S
-  const [st, setSt] = useState(null)
-  const [h, setH] = useState(null)
-  const [busy, setBusy] = useState(false)
-  useEffect(() => {
-    let gone = false
-    Promise.all([healthStatus(), loadHealth()]).then(([s, f]) => { if (!gone) { setSt(s); setH(f) } }).catch(() => {})
-    const off = onHealthChange(f => { if (!gone) setH(f) })
-    return () => { gone = true; off() }
-  }, [])
-  const ios = st?.platform === 'ios'
-  if (!st || !h || st.status === 'unsupported' || (!android && !ios)) return null
-  const c = HEALTH_COPY[ios ? 'ios' : 'android']()
-
-  if (st.status !== 'available') return (
-    <Section title={t('Health Connect')}>
-      <Row icon="heart" iconTint="var(--red)" title={t('Health Connect')}
-        subtitle={st.status === 'update'
-          ? t('Update Health Connect to share workouts and weigh-ins with other apps.')
-          : t('Install Health Connect to share workouts and weigh-ins with other apps.')}
-        accessory="chevron" onClick={() => openHealthConnect().catch(() => {})} />
-    </Section>
-  )
-
-  const turnOn = async () => {
-    setBusy(true)
-    try {
-      const r = await enableHealth(S)
-      if (r.health) setH(r.health)
-      else setH(await loadHealth())
-      if (r.ok) toast(c.on)
-      else toast(r.reason === 'denied' ? c.denied : c.failed)
-    } catch { toast(c.failed) }
-    setBusy(false)
-  }
-  const turnOff = removeWritten => async () => {
-    setBusy(true)
-    try { setH(await disableHealth({ removeWritten })) }
-    catch { toast(c.removeFailed) }
-    setBusy(false)
-  }
-  // Reading back (v1.4.3): heart rate during workouts and weigh-ins from other apps, each its own
-  // switch and its own permission. Turning one off keeps what it already brought in.
-  const toggleRead = kind => async v => {
-    setBusy(true)
-    try {
-      if (v) {
-        const r = await enableRead(kind, getState)
-        setH(r.health || await loadHealth())
-        if (!r.ok) toast(r.reason === 'denied' ? c.denied : c.failed)
-      } else setH(await disableRead(kind))
-    } catch { toast(c.failed) }
-    setBusy(false)
-  }
-  const reading = h.readHr || h.readWeight
-
-  // Off can mean two things for what is already there, so it asks; closing the sheet keeps it on.
-  const askOff = () => menuSheet({
-    title: c.stop,
-    subtitle: c.stopSub,
-    items: [
-      { icon: 'check', label: t('Stop, keep what it wrote'), onClick: turnOff(false) },
-      { icon: 'trash', label: t('Stop and remove what it wrote'), danger: true, onClick: turnOff(true) },
-    ],
-  })
-
-  return (
-    <Section title={c.section}
-      footer={[h.on && c.footer, reading && (h.readWeight && h.wHistory ? t('openGym reads only while it is open: heart rate for workouts of the last day, weigh-ins of the last year. Older workouts stay as they are.') : t('openGym reads only while it is open: heart rate for workouts of the last day, weigh-ins of the last 30 days. Older workouts stay as they are.'))].filter(Boolean).join(' ') || null}>
-      <Row icon="heart" iconTint="var(--red)" title={c.write}
-        subtitle={t('Finished workouts and weigh-ins, from this phone only.')}>
-        <Switch checked={!!h.on} disabled={busy} onChange={v => (v ? turnOn() : askOff())} />
-      </Row>
-      {h.on && h.error === 'permission' && <Row icon="warning" iconTint="var(--orange)"
-        title={t('Permission withdrawn. Tap to allow again')} accessory="chevron" onClick={turnOn} />}
-      <Row icon="heart" iconTint="var(--red)" title={t('Heart rate from your watch')}
-        subtitle={t('After a workout, each set gets the heart rate your watch saved. Garmin, Fitbit, Galaxy Watch and friends welcome.')}>
-        <Switch checked={!!h.readHr} disabled={busy} onChange={toggleRead('hr')} />
-      </Row>
-      <Row icon="scale" iconTint="var(--teal)" title={t('Weigh-ins from other apps')}
-        subtitle={t('Your smart scale’s weigh-ins land here. One you type in yourself always wins.')}>
-        <Switch checked={!!h.readWeight} disabled={busy} onChange={toggleRead('weight')} />
-      </Row>
-      {reading && h.readError === 'permission' && <Row icon="warning" iconTint="var(--orange)"
-        title={t('Permission withdrawn. Tap to allow again')} accessory="chevron"
-        onClick={() => toggleRead(h.readHr ? 'hr' : 'weight')(true)} />}
-      {(h.on || reading) && <Row icon="list" iconTint="var(--blue)" title={c.open}
-        accessory="chevron" onClick={() => openHealthConnect().catch(() => {})} />}
-    </Section>
-  )
-}

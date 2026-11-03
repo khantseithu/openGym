@@ -2,8 +2,7 @@
 // without a workout. Opt-in, under the workout-day reminder (S.reminder.nudge, S.reminder.tone).
 //
 // The self-hosted app sends it as a web push from the server (api/nudge.js, a hand copy of the
-// rules below, as api/queue.js is of lib/queue.js); the mobile build schedules it as a native
-// local notification (lib/mobile.js). Both answer the same three questions the same way:
+// rules below, as api/queue.js is of lib/queue.js). It answers three questions:
 //
 //   WHEN  — at 20:00 on the user's clock, or 2 hours after the reminder when that is later, and
 //           never after 21:30: a nudge is owed from that time until 21:30, once per day.

@@ -8,14 +8,12 @@ import { t, tn } from '../lib/i18n.js'
 import { todayISO, fmtDate } from '../lib/format.js'
 import { reportRange } from '../lib/report.js'
 import { workoutsCSV, bodyCSV, csvCounts } from '../lib/export-csv.js'
-import { MOBILE, shareExport } from '../lib/mobile.js'
 import { Button, Segmented, Row } from './ui.jsx'
 
 /** Save a text file: the share sheet on the phone (WKWebView can't download a blob), a download on the web. */
 export async function saveCSV(text, name) {
-  if (MOBILE) { await shareExport(text, name); return }
   const blob = new Blob([text], { type: 'text/csv;charset=utf-8' })
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click()
+  const a = document.createElement('a');a.href = URL.createObjectURL(blob);a.download = name;a.click()
   setTimeout(() => URL.revokeObjectURL(a.href), 60000)
 }
 

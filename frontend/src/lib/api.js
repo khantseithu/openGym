@@ -1,8 +1,6 @@
 // Backend + WebAuthn helpers (ported from the vanilla app).
 import { t } from './i18n-core.js'
-import { MOBILE } from './mobile.js'
 import { appBase } from './app-base.js'
-import { nativeFetch } from './capacitor-fetch.js'
 import { STATIC } from './demo.js'
 
 export const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent)
@@ -17,25 +15,6 @@ export const bio = () => (IS_APPLE ? t('Face ID / Touch ID') : IS_ANDROID ? t('f
 // API check produces a false negative (notably Chrome on iOS). The real create/get calls still run
 // only after the user chooses a passkey action and surface any genuine browser error there.
 export const webauthnOK = () => typeof window.PublicKeyCredential !== 'undefined'
-
-// The paired mobile app (lib/remote.js) is the only caller of these — everywhere else stays on
-// same-origin cookies, so remoteBase/remoteToken stay empty and api() behaves exactly as before.
-let remoteBase = ''
-let remoteToken = null
-export function setRemoteAuth(base, token) { remoteBase = base || ''; remoteToken = token || null }
-// A Cloudflare Access service token (lib/cf-access.js): sent only to the origin it was entered
-// for, never on a same-origin request, where the browser's own Access session cookie already
-// does the job, and never to a server that merely happens to be paired or typed in.
-let accessHeaders = {}
-let accessOrigin = ''
-export function setAccessHeaders(h, origin) { accessHeaders = Object.assign({}, h); accessOrigin = origin || '' }
-const originOf = base => { try { return new URL(base).origin } catch { return '' } }
-const accessFor = base => (base && accessOrigin && originOf(base) === accessOrigin ? accessHeaders : {})
-const remoteHeaders = () => Object.assign({}, accessFor(remoteBase), remoteToken ? { Authorization: 'Bearer ' + remoteToken } : {})
-// The paired server and what a request to it carries (the token, an Access service token for that
-// origin), for the phone's background check (lib/nudge-check.js), which runs with no WebView and
-// so has to be handed them. null when this is not a paired phone.
-export const remoteAuth = () => (remoteBase && remoteToken ? { base: remoteBase, headers: remoteHeaders() } : null)
 
 export { appBase }
 
@@ -63,16 +42,10 @@ const noServer = () => failure('This build has no server.', 'no-server', 0)
 export async function api(path, opts) {
   if (STATIC) throw noServer()
   const { timeout, ...init } = opts || {}
-  // A phone with no server to talk to: local mode, or a pairing that is gone. There is no
-  // relative URL to fall back on here — the WebView's own origin is Capacitor's local asset
-  // server, which answers ANY path, PUT included, with index.html and a 200, so a push "landed"
-  // there and the change was marked as synced while the server never saw it. status 0, not
-  // undefined: this is not "offline", and the store must not show it as such.
-  if (MOBILE && !remoteBase) throw failure(t('This phone is not connected to a server.'), 'not-paired', 0)
-  const headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers, remoteHeaders())
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers)
   // A paired phone has an absolute base of its own; everyone else is relative to where the app
   // is served, so a subpath deployment reaches its own API instead of the proxy's root.
-  const url = remoteBase ? remoteBase + path : appBase().replace(/\/$/, '') + path
+  const url = appBase().replace(/\/$/, '') + path
   const ms = timeout != null ? timeout : (init.method || 'GET').toUpperCase() === 'GET' ? TIMEOUT_GET_MS : TIMEOUT_MS
   return request(url, Object.assign({}, init, { headers }), ms)
 }
@@ -93,8 +66,7 @@ async function request(url, init, ms) {
 }
 
 // Every route of the API answers JSON (api/server.js json()). A 2xx whose body is not JSON is
-// therefore someone else's answer: Capacitor's local server on a phone that lost its pairing, an
-// auth proxy's login page, a proxy that sends /api/* to the app's index.html. Reading it as {}
+// therefore someone else's answer: an auth proxy's login page, a proxy that sends /api/* to the app's index.html. Reading it as {}
 // made a push look accepted by a server "from before revisions" — the change was marked synced
 // and dropped from the queue. It is an error, with the status it came with.
 async function exchange(url, init) {
@@ -110,12 +82,9 @@ async function exchange(url, init) {
 }
 
 // A "left" signal sent as the page goes: sendBeacon outlives a closing tab, where fetch may not.
-// Only the web app sends one, to its own origin with its session cookie. A beacon carries no
-// Authorization header, so a paired phone's server could not tell whose it is, and the phone's own
-// origin is Capacitor's asset server, which answers every path with index.html: the phones sent
-// every "left" to https://localhost/api/activity. The api() call beside it reaches the server.
+// It goes to the page's own origin with its session cookie.
 export function beacon(path, body) {
-  if (MOBILE || STATIC) return false
+  if (STATIC) return false
   try {
     if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') return false
     return !!navigator.sendBeacon(appBase().replace(/\/$/, '') + path, new Blob([JSON.stringify(body)], { type: 'application/json' }))
@@ -127,9 +96,7 @@ export function beacon(path, body) {
    base api() uses and carry the paired phone's Bearer token the same way (the server's CORS
    answer allows it for GET and PUT); both refuse to run on a phone without a server, like api(). */
 
-const mediaUrl = path => (remoteBase ? remoteBase + path : appBase().replace(/\/$/, '') + path)
-const mediaHeaders = remoteHeaders
-const notPaired = () => failure(t('This phone is not connected to a server.'), 'not-paired', 0)
+const mediaUrl = path => appBase().replace(/\/$/, '') + path
 const timedOut = () => failure(t('The server did not answer in time.'), 'timeout')
 
 /**
@@ -142,7 +109,6 @@ const timedOut = () => failure(t('The server did not answer in time.'), 'timeout
  */
 export async function apiBlob(path, { expectSize, idleMs = 30000, fetchImpl = globalThis.fetch } = {}) {
   if (STATIC) throw noServer()
-  if (MOBILE && !remoteBase) throw notPaired()
   const max = typeof expectSize === 'number' && expectSize >= 0 ? expectSize + 1024 : Infinity
   const ctl = typeof AbortController === 'function' ? new AbortController() : null
   let timer = null
@@ -158,7 +124,7 @@ export async function apiBlob(path, { expectSize, idleMs = 30000, fetchImpl = gl
   const orStall = p => { p.catch(() => {}); return Promise.race([p, stall]) }
   arm()
   try {
-    const r = await orStall(fetchImpl(mediaUrl(path), { headers: mediaHeaders(), cache: 'no-store', ...(ctl ? { signal: ctl.signal } : {}) }))
+    const r = await orStall(fetchImpl(mediaUrl(path), { cache: 'no-store', ...(ctl ? { signal: ctl.signal } : {}) }))
     if (!r.ok) {
       let body = null
       try { body = await r.json() } catch { /* not JSON: a proxy's page */ }
@@ -199,7 +165,6 @@ export async function apiBlob(path, { expectSize, idleMs = 30000, fetchImpl = gl
  */
 export function apiUpload(path, blob, mime, { onProgress, idleMs = 60000, XHR = globalThis.XMLHttpRequest } = {}) {
   if (STATIC) return Promise.reject(noServer())
-  if (MOBILE && !remoteBase) return Promise.reject(notPaired())
   return new Promise((resolve, reject) => {
     const xhr = new XHR()
     let timer = null
@@ -207,7 +172,6 @@ export function apiUpload(path, blob, mime, { onProgress, idleMs = 60000, XHR = 
     const arm = () => { clearTimeout(timer); timer = setTimeout(() => { idle = true; xhr.abort() }, idleMs) }
     xhr.open('PUT', mediaUrl(path))
     xhr.setRequestHeader('Content-Type', mime)
-    for (const [k, v] of Object.entries(mediaHeaders())) xhr.setRequestHeader(k, v)
     if (xhr.upload) xhr.upload.onprogress = e => { arm(); if (onProgress && e.lengthComputable) onProgress(e.loaded, e.total) }
     xhr.onprogress = arm
     xhr.onload = () => {
@@ -233,118 +197,6 @@ export function apiUpload(path, blob, mime, { onProgress, idleMs = 60000, XHR = 
     arm()
     xhr.send(blob)
   })
-}
-
-// "Failed to fetch" is all the WebView says when pairing never got an answer (#329), and it says
-// the same for a wrong address and for a reverse proxy that answered the CORS preflight itself
-// without letting the app's origin in (a Traefik `headers` middleware with an allow-list, which
-// never passes the OPTIONS on to openGym). A no-cors request needs no preflight and tells the two
-// apart: it settles when the server is there at all. Its answer cannot be read, nor needs to be.
-const PROBE_MS = 5000
-const hostOfBase = base => {
-  try { const u = new URL(base); return u.host + u.pathname.replace(/\/$/, '') } catch { return base || '' }
-}
-// What /api/health says when it can be read (the app's native fetch reads it past CORS):
-// 'opengym', 'front' when something in front of openGym answered in its place (a redirect, a
-// 401/403 or an HTML page: an SSO login, forward-auth, a proxy rule), 'other' for an answer that
-// is just not openGym's (another app's JSON, a proxy's plain "404 page not found"), and null
-// when nothing readable came back.
-async function healthAnswer(base, ms) {
-  const ctl = typeof AbortController === 'function' ? new AbortController() : null
-  let timer = null
-  try {
-    const res = await Promise.race([
-      nativeFetch(base + '/api/health', { method: 'GET', headers: { Accept: 'application/json' }, ...(ctl ? { signal: ctl.signal } : {}) }),
-      new Promise((_, reject) => { timer = setTimeout(() => { if (ctl) ctl.abort(); reject(new Error('timeout')) }, ms) }),
-    ])
-    const text = await res.text()
-    let body = null
-    try { body = JSON.parse(text) } catch { body = null }
-    if (res.ok && body && typeof body === 'object' && body.ok === true) return 'opengym'
-    const type = (res.headers && typeof res.headers.get === 'function' && res.headers.get('content-type')) || ''
-    const html = /html/i.test(type) || /^\s*</.test(text || '')
-    if ((res.status >= 300 && res.status < 400) || res.status === 401 || res.status === 403 || res.status === 407 || html) return 'front'
-    return 'other'
-  } catch {
-    return null
-  } finally { clearTimeout(timer) }
-}
-async function whyUnreachable(base, ms) {
-  let reached = false
-  const ctl = typeof AbortController === 'function' ? new AbortController() : null
-  let timer = null
-  try {
-    await Promise.race([
-      fetch(base + '/api/health', { mode: 'no-cors', cache: 'no-store', ...(ctl ? { signal: ctl.signal } : {}) }),
-      new Promise((_, reject) => { timer = setTimeout(() => { if (ctl) ctl.abort(); reject(new Error('timeout')) }, ms) }),
-    ])
-    reached = true
-  } catch { /* not reachable either */ }
-  finally { clearTimeout(timer) }
-  // Something answered. Whether it is openGym needs a readable answer: in the app the native
-  // fetch reads /api/health past CORS. A login page or a proxy rule answering in openGym's place
-  // is not a wrong address, and a page that is simply not openGym's is (#329). No readable
-  // answer at all leaves the CORS explanation.
-  const answer = reached ? await healthAnswer(base, ms) : null
-  if (answer === 'front') {
-    return failure(t('That address answers, but a login page or proxy rule replied instead of openGym. Let /api/ through to openGym unchanged. See “Phone app and CORS” in docs/SELF_HOSTING.md.'), 'proxy-answered')
-  }
-  if (answer === 'other') {
-    return failure(t('That address answers, but it isn’t an openGym server. Check the URL.'), 'not-opengym')
-  }
-  if (reached) {
-    const origin = globalThis.location?.origin || 'https://localhost'
-    return failure(t('Your server was reached, but it refused the app’s request (CORS). If a reverse proxy such as Traefik adds CORS headers, let requests from {0} through to openGym unchanged. See “Phone app and CORS” in docs/SELF_HOSTING.md.', origin), 'cors')
-  }
-  // An address typed without a scheme is tried as https://. A home server on plain http gives
-  // that try nothing to talk to, while the phone's browser, which tries http, opens it (#428).
-  let u = null
-  try { u = new URL(base) } catch { /* said as it is below */ }
-  if (u && u.protocol === 'https:' && looksLocal(u.hostname)) {
-    return failure(t('Could not reach {0} over https://. If your server runs on plain http (common at home), type http://{0} instead.', hostOfBase(base)), 'unreachable')
-  }
-  return failure(t('Could not reach {0}. Check the address and that this phone can reach it.', hostOfBase(base)), 'unreachable')
-}
-
-// An address that only makes sense on a home network: a private or link-local IP, a name
-// without a dot ("nas"), or a LAN-only suffix (.local, .lan, .home.arpa, .internal). Those are
-// where a server most often runs on plain http, so an https:// try that got nowhere is worth a
-// hint about http:// (#428). A public name gets the plain "could not reach" instead.
-export function looksLocal(hostname) {
-  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
-  if (!h) return false
-  const v4 = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(h)
-  if (v4) {
-    const a = +v4[1], b = +v4[2]
-    return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
-      (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127)
-  }
-  if (h.includes(':')) return h === '::1' || /^f[cd]/.test(h) || /^fe[89ab]/.test(h)
-  return !h.includes('.') || /\.(local|lan|home|home\.arpa|internal|localdomain)$/.test(h)
-}
-
-// Bootstraps the connection itself: the base isn't configured yet (that's what this call decides),
-// so it talks straight to the server the user typed in, no Authorization header. A Cloudflare
-// Access token goes along when it was entered for that server: without it Access never lets
-// the code through, and to any other server it would be handed to a stranger.
-export async function pairRedeem(serverBase, code, { probeMs = PROBE_MS } = {}) {
-  let data
-  try {
-    data = await request(serverBase + '/api/pair/redeem', {
-      method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, accessFor(serverBase)), body: JSON.stringify({ code })
-    }, TIMEOUT_GET_MS)
-  } catch (e) {
-    // A wrong, spent or expired code is the one refusal a person can fix, and the server says it
-    // in English only ('invalid or expired code'), so it is said here in the UI language.
-    if (e && e.status === 400) throw failure(t('That code didn’t work. Codes last 5 minutes and work once, so grab a fresh one.'), 'pair-invalid', 400)
-    // The server answered (any status) or did not answer in time: that error says it already.
-    if (e && (e.status != null || e.code)) throw e
-    throw await whyUnreachable(serverBase, probeMs)
-  }
-  // Anything that is not a pairing would be saved as one — and the phone would then send every
-  // change to a server that never gave it a token.
-  if (!data.token || !data.user) throw failure(t('The server answered with something other than openGym data.'), 'bad-response', 200)
-  return data
 }
 
 const bufToB64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')

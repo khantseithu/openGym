@@ -38,11 +38,6 @@ vi.mock('../lib/api.js', () => ({
 }))
 vi.mock('../lib/push.js', () => ({ pushSupported: () => false, enablePush: vi.fn(), disablePush: vi.fn(), sendTestPush: vi.fn() }))
 vi.mock('../lib/wakelock.js', () => ({ wakeLockSupported: () => false }))
-vi.mock('../lib/mobile.js', () => ({
-  get MOBILE() { return mocks.MOBILE },
-  isAndroid: () => Promise.resolve(false), shareExport: vi.fn(), syncReminder: vi.fn(),
-}))
-vi.mock('./MobileOnboarding.jsx', () => ({ ConnectSheet: () => null }))
 vi.mock('../sheets.jsx', () => ({
   starterPlanSheet: vi.fn(), confirmSheet: vi.fn(), importFromApp: vi.fn(),
   importFromHevy: vi.fn(), equipmentProfileSheet: vi.fn(), menuSheet: vi.fn(), askAddDeviceData: vi.fn(),
@@ -70,7 +65,6 @@ let writeText
 beforeEach(() => {
   mocks.S = { unit: 'kg', restSec: 90, restPauseSec: 15, sound: false, effort: 'none', gifSize: 'full', workouts: [], routines: [], exWeights: {} }
   mocks.user = { id: ID, name: 'andi' }
-  mocks.MOBILE = false
   mocks.toast.mockClear()
   writeText = vi.fn(() => Promise.resolve())
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
@@ -87,12 +81,6 @@ describe('Settings → Account ID', () => {
     await tick()
     expect(writeText).toHaveBeenCalledWith(ID)
     expect(mocks.toast).toHaveBeenCalledWith('Account ID copied')
-  })
-
-  it('a paired phone shows it in the Server & sync block', () => {
-    mocks.MOBILE = true
-    const page = mount(<Settings page="account" />)
-    expect(idRow(section(page, 'Server & sync')).querySelector('.acct-id').textContent).toBe(ID)
   })
 
   it('a clipboard that refuses says nothing, and the id stays on screen', async () => {

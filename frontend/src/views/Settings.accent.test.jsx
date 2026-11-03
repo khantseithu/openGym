@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Settings from './Settings.jsx'
 import { searchSettings } from './settings-pages.js'
-import { setRestAccent } from '../lib/rest-alert.js'
 import { readableIn } from '../lib/accent.js'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -41,8 +40,6 @@ vi.mock('../lib/api.js', () => ({
 }))
 vi.mock('../lib/push.js', () => ({ pushSupported: () => false, enablePush: vi.fn(), disablePush: vi.fn(), sendTestPush: vi.fn() }))
 vi.mock('../lib/wakelock.js', () => ({ wakeLockSupported: () => false }))
-vi.mock('../lib/mobile.js', () => ({ MOBILE: false, isAndroid: () => Promise.resolve(false), shareExport: vi.fn(), syncReminder: vi.fn() }))
-vi.mock('./MobileOnboarding.jsx', () => ({ ConnectSheet: () => null }))
 vi.mock('../sheets.jsx', () => ({
   starterPlanSheet: vi.fn(), confirmSheet: vi.fn(), importFromApp: vi.fn(),
   importFromHevy: vi.fn(), equipmentProfileSheet: vi.fn(),
@@ -51,15 +48,12 @@ vi.mock('../sheets.jsx', () => ({
 // The Settings view reads the build-time version constant at render time.
 globalThis.__APP_VERSION__ ??= 'test'
 
-vi.mock('../lib/rest-alert.js', () => ({ setRestAccent: vi.fn() }))
-
 let host, root
 beforeEach(() => {
   mocks.S = { unit: 'kg', theme: 'dark', accent: 'lime', workouts: [], routines: [], exWeights: {} }
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
-  setRestAccent.mockClear()
 })
 afterEach(() => {
   act(() => root.unmount())
@@ -92,7 +86,6 @@ describe('Settings: your own accent colour', () => {
     pick('#FF00AA')
     expect(mocks.S.accent).toBe('custom')
     expect(mocks.S.accentCustom).toBe('#ff00aa')
-    expect(setRestAccent).toHaveBeenCalledWith('#ff00aa')
     mount()
     expect(host.querySelector('.lrow-v').textContent).toBe('Your own color')
     expect(own().classList.contains('on')).toBe(true)
@@ -104,16 +97,12 @@ describe('Settings: your own accent colour', () => {
     const before = mocks.S
     drag('#ff0000'); drag('#00ff00'); drag('#0000ff')
     expect(mocks.S).toBe(before)                 // no store write per drag step
-    expect(setRestAccent).not.toHaveBeenCalled()  // no native call per drag step
     expect(document.documentElement.dataset.accent).toBe('custom')
     expect(document.documentElement.style.getPropertyValue('--acc')).toBe(readableIn('#0000ff', 'dark'))
     release()
     expect(mocks.S.accentCustom).toBe('#0000ff')
-    expect(setRestAccent).toHaveBeenCalledTimes(1)
-    expect(setRestAccent).toHaveBeenCalledWith('#0000ff')
     mount()                                       // the store re-renders the row
     release()                                     // a second change with nothing new: no second save
-    expect(setRestAccent).toHaveBeenCalledTimes(1)
   })
 
   it('saves after the picker rests, for a browser that sends no change', () => {
@@ -124,7 +113,6 @@ describe('Settings: your own accent colour', () => {
       expect(mocks.S.accentCustom).toBe(undefined)
       act(() => vi.advanceTimersByTime(450))
       expect(mocks.S.accentCustom).toBe('#ff8800')
-      expect(setRestAccent).toHaveBeenCalledTimes(1)
     } finally { vi.useRealTimers() }
   })
 

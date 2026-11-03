@@ -8,7 +8,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { sanitizeHr, hrLabel } from './heart-rate.js'
 import { buildCompletedWorkout } from './finish-workout.js'
 import { mergeStates } from './sync-merge.js'
-import { patchSetIn } from './watch-sync.js'
 
 const workout = (id, sets, extra = {}) => ({ id, d: '2026-10-10', name: 'Push', start: 1000, end: 4000, entries: [{ id: '0025', target: { sets: sets.length, reps: 8 }, sets }], ...extra })
 const plainSets = () => [{ w: 60, r: 8, done: true, at: 2000 }, { w: 60, r: 7, done: true, at: 3000 }]
@@ -61,30 +60,6 @@ describe('a profile with them', () => {
   it('survives a JSON round trip the way an older app stores and sends the profile', () => {
     const S = { workouts: [workout('w1', hrSets())] }
     expect(JSON.parse(JSON.stringify(S))).toEqual(S)
-  })
-})
-
-describe('a set patched after the workout was saved (the rest\'s reading comes late)', () => {
-  it('gets the fields, and the workout is stamped as edited so the sync keeps it', () => {
-    const s = { active: null, workouts: [workout('w1', plainSets())] }
-    const stamp = vi.fn(w => { w._ts = 99 })
-    expect(patchSetIn(s, { wid: 'w1', exId: '0025', entryIdx: 0, setIdx: 0 }, { restHr: { avg: 110, max: 131 } }, stamp)).toBe(true)
-    expect(s.workouts[0].entries[0].sets[0]).toEqual({ ...plainSets()[0], restHr: { avg: 110, max: 131 } })
-    expect(s.workouts[0].entries[0].sets[1]).toEqual(plainSets()[1])
-    expect(stamp).toHaveBeenCalledTimes(1)
-    expect(s.workouts[0]._ts).toBe(99)
-  })
-
-  it('in the running session, without a stamp; a set that is not there changes nothing', () => {
-    const s = { active: { id: 'a1', entries: [{ id: '0025', sets: plainSets() }] }, workouts: [] }
-    const stamp = vi.fn()
-    expect(patchSetIn(s, { wid: 'a1', exId: '0025', entryIdx: 0, setIdx: 1 }, { hr: { avg: 130, max: 150 } }, stamp)).toBe(true)
-    expect(s.active.entries[0].sets[1].hr).toEqual({ avg: 130, max: 150 })
-    expect(stamp).not.toHaveBeenCalled()
-    const before = JSON.stringify(s)
-    expect(patchSetIn(s, { wid: 'a1', exId: '9999', entryIdx: 4, setIdx: 0 }, { hr: { avg: 130, max: 150 } }, stamp)).toBe(false)
-    expect(patchSetIn(s, { wid: 'gone', exId: '0025', entryIdx: 0, setIdx: 0 }, { hr: { avg: 130, max: 150 } }, stamp)).toBe(false)
-    expect(JSON.stringify(s)).toBe(before)
   })
 })
 

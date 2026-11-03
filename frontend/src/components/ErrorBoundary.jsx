@@ -1,7 +1,6 @@
 import { Component } from 'react'
 import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
-import { markDiscarded } from '../lib/watch-sync.js'
 import Icon from './Icon.jsx'
 import { Button } from './ui.jsx'
 
@@ -33,7 +32,6 @@ export default class ErrorBoundary extends Component {
           <div style={{ height: 8 }} />
           <Button variant="danger" icon="trash" onClick={() => {
             // The watch hears it was discarded, not finished (#776).
-            markDiscarded(useStore.getState().S.active?.id)
             useStore.getState().update(s => { s.active = null })
             location.reload()
           }}>{t('Discard the running workout')}</Button>

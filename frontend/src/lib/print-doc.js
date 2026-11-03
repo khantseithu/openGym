@@ -24,7 +24,6 @@
 // Nothing here bundles a PDF library: the browser's print dialog or the phone's print sheet
 // renders the PDF.
 import { t, getLang, RTL_LANGS, dateLocale } from './i18n-core.js'
-import { MOBILE, printHtml } from './mobile.js'
 
 export const esc = str => String(str == null ? '' : str)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -158,22 +157,6 @@ ${css}</style></head>
 </div></body></html>`
 }
 
-// Letter paper where people use it (the US, Canada, Mexico, the Philippines, parts of Latin
-// America), A4 everywhere else: only a hint for the phone's print sheet, which lets you change it.
-const LETTER = new Set(['US', 'CA', 'MX', 'PH', 'CL', 'CO', 'VE', 'GT', 'CR', 'PA', 'DO', 'PR', 'SV', 'NI'])
-export function paperFor(locale) {
-  const region = String(locale || '').split(/[-_]/)[1]?.toUpperCase()
-  return region && LETTER.has(region) ? 'letter' : 'a4'
-}
-
-/** What the phone's print sheet needs besides the page: the paper it starts on and the footer
- * the iOS plugin draws (lib/mobile.js printHtml). */
-export function printOptions() {
-  let locale = ''
-  try { locale = navigator.language || '' } catch (e) { /* */ }
-  return { paper: paperFor(locale), footer: { left: 'opengym.ch', page: t('Page {0} of {1}') } }
-}
-
 // The web: a hidden iframe and the browser's own print dialog (→ Save as PDF), so we never
 // navigate away or trip a popup blocker.
 function printInFrame(html) {
@@ -199,12 +182,9 @@ function printInFrame(html) {
 }
 
 /**
- * Print `html` (a printShell page): the browser's print dialog on the web, the phone's print
- * sheet in the app (Android's WebView has no window.print()). `name` names the print job and the
- * suggested PDF file; Android refuses a job without one.
+ * Print `html` (a printShell page): the browser's print dialog.
  */
-export function printDocument(html, name) {
-  if (MOBILE) return printHtml(html, name || 'openGym', printOptions()).catch(() => { /* dismissed */ })
+export function printDocument(html) {
   printInFrame(html)
   return Promise.resolve()
 }

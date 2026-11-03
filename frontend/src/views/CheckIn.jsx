@@ -5,8 +5,7 @@ import { useUI } from '../store/useUI.js'
 import { uid } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { canRenderFmt } from '../lib/qr.js'
-import { scanCode, importCodeFromImage } from '../lib/scan.js'
-import { MOBILE } from '../lib/mobile.js'
+
 import Icon from '../components/Icon.jsx'
 import QrCanvas from '../components/QrCanvas.jsx'
 import CameraScan from '../components/CameraScan.jsx'
@@ -196,25 +195,14 @@ function CardSheet({ close, card }) {
   // sheet on top of this one. Either way the value drops straight into the form so the user can
   // still name it before saving.
   const doScan = async () => {
-    if (!MOBILE) {
-      useUI.getState().openSheet(closeCam => <CameraScan
-        onCancel={closeCam}
-        onFound={code => {
-          closeCam()
-          if (!canRenderFmt(code.fmt)) { toast(t("That's not a QR code. Only QR cards can be shown here")); return }
-          setValue(code.value)
-        }} />)
-      return
-    }
-    setBusy(true)
-    try {
-      const code = await scanCode()
-      if (!code) return                       // user backed out
-      if (!canRenderFmt(code.fmt)) { toast(t("That's not a QR code. Only QR cards can be shown here")); return }
-      setValue(code.value)
-    } catch (e) {
-      toast(scanErrorMessage(e))
-    } finally { setBusy(false) }
+    useUI.getState().openSheet(closeCam => <CameraScan
+      onCancel={closeCam}
+      onFound={code => {
+        closeCam()
+        if (!canRenderFmt(code.fmt)) { toast(t("That's not a QR code. Only QR cards can be shown here")); return }
+        setValue(code.value)
+      }} />)
+    return
   }
 
   const onFile = async ev => {
@@ -223,7 +211,7 @@ function CardSheet({ close, card }) {
     if (!file) return
     setBusy(true)
     try {
-      const code = await importCodeFromImage(file)
+      const code = await (await import('../lib/scan-web.js')).importCodeFromImageWeb(file)
       if (!code) { toast(t('No QR code found in that image')); return }
       if (!canRenderFmt(code.fmt)) { toast(t("That's not a QR code. Only QR cards can be shown here")); return }
       setValue(code.value)
@@ -250,12 +238,4 @@ function CardSheet({ close, card }) {
 
     <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
   </>
-}
-
-// Map the thrown reasons from lib/scan.js to something a person can act on.
-function scanErrorMessage(e) {
-  const m = String(e && e.message)
-  if (m === 'permission-denied') return t('Camera permission is needed to scan. Enable it in Settings.')
-  if (m === 'unsupported') return t('Scanning is not available on this device.')
-  return t('Could not start the scanner')
 }

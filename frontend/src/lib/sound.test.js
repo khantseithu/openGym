@@ -436,69 +436,20 @@ describe('vibrate switch', () => {
     expect(sound.vibrateSupported()).toBe(false)
     expect(() => sound.vibrate(30)).not.toThrow()
   })
-
-  it('the iPhone app, without navigator.vibrate, buzzes through its native side', () => {
-    Object.defineProperty(navigator, 'vibrate', { value: undefined, configurable: true, writable: true })
-    const native = []
-    sound.setNativeBuzzer(p => { native.push(p); return Promise.resolve(true) })
-    try {
-      expect(sound.vibrateSupported()).toBe(true)
-      sound.vibrate([200, 100, 200])
-      sound.setVibrate(false)
-      sound.vibrate(30)
-      expect(native).toEqual([[200, 100, 200]])
-    } finally {
-      sound.setNativeBuzzer(null)
-      sound.setVibrate(true)
-    }
-  })
 })
 
-// #375: the end of a rest or a hold, with "Vibrate when the phone is on silent" on in the Android
-// app, buzzes through the native alarm buzz App.jsx hands in; anything else is an ordinary buzz.
 describe('alertBuzz', () => {
-  let calls
-  const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve() }
-  beforeEach(() => {
-    calls = []
-    Object.defineProperty(navigator, 'vibrate', { value: p => { calls.push(p); return true }, configurable: true, writable: true })
-  })
-  afterEach(() => { delete navigator.vibrate; sound.setAlarmBuzzer(null) })
-
-  it('without a native buzzer it is the ordinary buzz', () => {
-    sound.alertBuzz([200, 100, 200])
-    expect(calls).toEqual([[200, 100, 200]])
-  })
-
-  it('with one it goes there, and not also the ordinary way', async () => {
-    const native = vi.fn(async () => true)
-    sound.setAlarmBuzzer(native)
-    sound.alertBuzz([200, 100, 200])
-    await flush()
-    expect(native).toHaveBeenCalledWith([200, 100, 200])
-    expect(calls).toEqual([])
-  })
-
-  it('falls back to the ordinary buzz when the native one could not, or threw', async () => {
-    sound.setAlarmBuzzer(async () => false)
+  it('is the ordinary buzz, and Vibrate off is off for it too', () => {
+    const buzz = vi.fn()
+    vi.stubGlobal('navigator', { vibrate: buzz })
+    sound.setVibrate(true)
     sound.alertBuzz([200])
-    await flush()
-    sound.setAlarmBuzzer(() => { throw new Error('bridge gone') })
-    sound.alertBuzz([300])
-    await flush()
-    sound.setAlarmBuzzer(() => Promise.reject(new Error('no plugin')))
-    sound.alertBuzz([400])
-    await flush()
-    expect(calls).toEqual([[200], [300], [400]])
-  })
-
-  it('Vibrate off is off for it too', async () => {
-    const native = vi.fn(async () => true)
-    sound.setAlarmBuzzer(native)
+    expect(buzz).toHaveBeenCalledWith([200])
+    buzz.mockClear()
     sound.setVibrate(false)
-    sound.alertBuzz([200, 100, 200])
-    await flush()
-    expect(native).not.toHaveBeenCalled()
-    expect(calls).toEqual([])
+    sound.alertBuzz([200])
+    expect(buzz).not.toHaveBeenCalled()
+    sound.setVibrate(true)
+    vi.unstubAllGlobals()
   })
 })

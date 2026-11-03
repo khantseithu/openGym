@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { NUDGE_COPY, NUDGE_TONES, lineIndex, nudgeFor, nudgeMinute, toneOf } from './nudge.js'
-import { buildNudgeNotifications } from './mobile.js'
 
 // The same rules as api/nudge.js (api/test/nudge.test.js holds the mirror of these cases):
 // a planned day with nothing logged is a miss; 3 misses in a row since the last workout and it
@@ -55,36 +54,3 @@ describe('nudgeFor', () => {
   })
 })
 
-describe('buildNudgeNotifications (mobile)', () => {
-  const now = new Date(2026, 8, 7, 12, 0) // Monday noon
-  it('schedules the evening of each upcoming missed day, at most 3 past the last workout', () => {
-    const n = buildNudgeNotifications(S({ workouts: [w('2026-09-04')] }), now)
-    expect(n.map(x => [x.schedule.at.getDate(), x.schedule.at.getHours(), x.schedule.at.getMinutes()]))
-      .toEqual([[7, 20, 0], [9, 20, 0], [11, 20, 0]])
-    expect(n[0].title).toBe(NUDGE_COPY.friendly.title)
-    expect(n[0].body).toBe(NUDGE_COPY.friendly.lines[lineIndex('2026-09-07', 4)].replace('{0}', 'Push'))
-    expect(new Set(n.map(x => x.id)).size).toBe(3)
-  })
-  it('is off unless both the reminder and the nudge are on', () => {
-    expect(buildNudgeNotifications(S({ reminder: { on: true, time: '08:00' } }), now)).toEqual([])
-    expect(buildNudgeNotifications(S({ reminder: { on: false, nudge: true } }), now)).toEqual([])
-    expect(buildNudgeNotifications(S({ workouts: [w('2026-09-04')], reminder: { on: true, nudge: true, time: '20:30' } }), now)).toEqual([])
-  })
-  it('skips today when it is trained, past its evening, or a session is on screen', () => {
-    const trained = buildNudgeNotifications(S({ workouts: [w('2026-09-07')] }), now)
-    expect(trained[0].schedule.at.getDate()).toBe(9)
-    const late = buildNudgeNotifications(S({ workouts: [w('2026-09-04')] }), new Date(2026, 8, 7, 21, 0))
-    expect(late[0].schedule.at.getDate()).toBe(9)
-    const live = buildNudgeNotifications(S({ workouts: [w('2026-09-04')], active: { rid: 'push' } }), now)
-    expect(live[0].schedule.at.getDate()).toBe(9)
-  })
-  it('skips today once it carries a day note (#261)', () => {
-    const n = buildNudgeNotifications(S({ workouts: [w('2026-09-04')], dayNotes: { '2026-09-07': { tag: 'travel', _ts: 1 } } }), now)
-    expect(n[0].schedule.at.getDate()).toBe(9)
-  })
-  it('takes the tone, and runs 2 hours after a late reminder', () => {
-    const n = buildNudgeNotifications(S({ workouts: [w('2026-09-04')], reminder: { on: true, time: '19:00', nudge: true, tone: 'drill' } }), now)
-    expect(n[0].title).toBe(NUDGE_COPY.drill.title)
-    expect([n[0].schedule.at.getHours(), n[0].schedule.at.getMinutes()]).toEqual([21, 0])
-  })
-})

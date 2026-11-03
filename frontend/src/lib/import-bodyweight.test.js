@@ -60,19 +60,6 @@ describe('Strong measurements export', () => {
 // imported here went straight back into Apple Health / Health Connect, a second copy of every
 // weigh-in. An imported weigh-in is marked, and only one typed into openGym goes out.
 describe('imported weigh-ins never go back to the health hub', () => {
-  it('marks what an import brings, and leaves what was there alone', async () => {
-    const { mergeImport } = await import('./import-csv.js')
-    const { healthRecords, planSync } = await import('./health-connect.js')
-    const S = { unit: 'kg', workouts: [], bodyweight: [{ d: '2026-09-01', w: 79, t: Date.parse('2026-09-01T07:00:00') }] }
-    const parsed = parseImport(record('01', 80, 'kg') + record('02', 81, 'kg') + record('03', 82, 'kg'))
-    expect(mergeImport(S, parsed)).toEqual({ added: 2, skipped: 1 })
-    expect(S.bodyweight.map(b => b.src || null)).toEqual([null, 'import', 'import'])
-    // The writer both apps use (Apple Health on the iPhone, Health Connect on Android).
-    const recs = healthRecords(S, { nameOf: () => '' })
-    expect(recs.weights.map(r => r.id)).toEqual(['opengym-bw-2026-09-01'])
-    expect(planSync(recs, {}).weights.map(r => r.id)).toEqual(['opengym-bw-2026-09-01'])
-  })
-
   it('a CSV of weights and a Hevy import count as imports too', async () => {
     const { mergeImport } = await import('./import-csv.js')
     const { parseHevyBodyweight } = await import('./import-hevy.js')

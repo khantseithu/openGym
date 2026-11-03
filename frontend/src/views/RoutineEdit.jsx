@@ -17,10 +17,8 @@ import { Button, Row, SelectRow, Switch } from '../components/ui.jsx'
 import SwipeRow from '../components/SwipeRow.jsx'
 import { workoutControls } from '../lib/workout-controls.js'
 import { copyRoutine, deleteRoutine, replaceSlotExercise } from '../lib/routines.js'
-import { planPrintHTML, printPlan } from '../lib/plan-share.js'
-import { printOptions } from '../lib/print-doc.js'
+import { printPlan } from '../lib/plan-share.js'
 import { markEntryUndone } from '../lib/sync-merge.js'
-import { MOBILE, printHtml } from '../lib/mobile.js'
 import { speedUnitOf } from '../lib/speed.js'
 import { POLICIES_FOR, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import BodyMap from '../components/BodyMap.jsx'
@@ -371,10 +369,6 @@ export default function RoutineEdit() {
   const toast = useUI(s => s.toast)
   const r = S.routines.find(x => x.id === id)
   useEffect(() => { if (!r) nav('/plan') }, [!!r])
-  // Editing here has no explicit "save" — every field change persists immediately. A single
-  // auto-backup on the way out (not per keystroke) covers the whole editing session, deletion
-  // included: this still unmounts after the delete button navigates away.
-  useEffect(() => () => useStore.getState().autoBackupNow(), [])
   const edit = fn => update(s => { fn(s.routines.find(x => x.id === id).ex) })
   const reorder = useRoutineReorder(r, r?.ex || [], (sourceIndex, targetSlot) => {
     edit(exercises => { reorderRoutineUnit(exercises, sourceIndex, targetSlot) })
@@ -424,10 +418,7 @@ export default function RoutineEdit() {
   // plugin in the app, where the WebView has no window.print().
   const printRoutine = () => {
     const owner = useStore.getState().user?.name || ''
-    // Android's print manager refuses a job without a name. The editor never leaves a name blank,
-    // but a routine that arrived from an import or another client may have none.
-    if (MOBILE) printHtml(planPrintHTML(S, owner, { routineId: id }), r.name || t('Routine'), printOptions()).catch(() => { /* dismissed */ })
-    else printPlan(S, owner, { routineId: id })
+    printPlan(S, owner, { routineId: id });
   }
   const toggleLink = i => edit(ex => {
     if (i < 1) return

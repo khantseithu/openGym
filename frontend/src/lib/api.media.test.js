@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { apiBlob, apiUpload, setRemoteAuth } from './api.js'
+import { apiBlob, apiUpload } from './api.js'
 
-afterEach(() => setRemoteAuth('', null))
 
 const stream = (chunks, { stall = false } = {}) => ({
   getReader() {
@@ -17,13 +16,11 @@ const answer = (status, { length, body, json } = {}) => ({
 })
 
 describe('apiBlob', () => {
-  it('reads the body into a Blob, with the Bearer token of a paired phone', async () => {
-    setRemoteAuth('https://gym.example.com', 'TOKEN')
+  it('reads the body into a Blob', async () => {
     const fetchImpl = vi.fn(async () => answer(200, { length: 6, body: stream([new Uint8Array([1, 2, 3]), new Uint8Array([4, 5, 6])]) }))
     const b = await apiBlob('/api/media/abc', { expectSize: 6, fetchImpl })
     expect(new Uint8Array(await b.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6]))
-    expect(fetchImpl.mock.calls[0][0]).toBe('https://gym.example.com/api/media/abc')
-    expect(fetchImpl.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer TOKEN' })
+    expect(fetchImpl.mock.calls[0][0]).toBe('/api/media/abc')
   })
 
   it('refuses an answer that announces more than the file can be, before reading it', async () => {
@@ -63,12 +60,11 @@ const reply = (status, text, headers = {}) => x => { x.status = status; x.respon
 
 describe('apiUpload', () => {
   it('PUTs the file with its recorded type and answers the server\'s JSON', async () => {
-    setRemoteAuth('https://gym.example.com', 'TOKEN')
     const { X, made } = fakeXHR(reply(201, JSON.stringify({ ok: true, existed: false })))
     const blob = new Blob(['bytes'], { type: 'application/octet-stream' })
     await expect(apiUpload('/api/media/abc', blob, 'video/quicktime', { XHR: X })).resolves.toEqual({ ok: true, existed: false })
-    expect(made[0]).toMatchObject({ method: 'PUT', url: 'https://gym.example.com/api/media/abc', body: blob })
-    expect(made[0].headers).toEqual({ 'Content-Type': 'video/quicktime', Authorization: 'Bearer TOKEN' })
+    expect(made[0]).toMatchObject({ method: 'PUT', url: '/api/media/abc', body: blob })
+    expect(made[0].headers).toEqual({ 'Content-Type': 'video/quicktime' })
   })
 
   it('names a proxy\'s own 413 apart from the API\'s', async () => {

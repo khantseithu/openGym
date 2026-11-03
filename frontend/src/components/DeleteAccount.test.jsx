@@ -12,7 +12,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
    phone's own screen lock comes first and the pairing carries it. The server's refusals are said
    in the UI language. The store and the API are stand-ins; what the sheet sends and says is the point. */
 const mocks = vi.hoisted(() => {
-  const state = { sheets: [], MOBILE: false, webauthn: true, proofs: { passkeys: [{ id: 'k1' }], password: true } }
+  const state = { sheets: [], webauthn: true, proofs: { passkeys: [{ id: 'k1' }], password: true } }
   state.toast = vi.fn()
   state.deleteAccount = vi.fn(async () => {})
   state.passkeyAssertion = vi.fn(async () => ({ cid: 'c1', credential: { id: 'k1' } }))
@@ -40,12 +40,7 @@ vi.mock('../lib/api.js', () => ({
   passkeyAssertion: (...a) => mocks.passkeyAssertion(...a),
   passwordLogin: vi.fn(), passwordRegister: vi.fn(), passwordResetRedeem: vi.fn(),
 }))
-vi.mock('../lib/mobile.js', () => ({ get MOBILE() { return mocks.MOBILE } }))
 vi.mock('../sheets.jsx', () => ({ askAddDeviceData: vi.fn() }))
-vi.mock('../lib/device-auth.js', () => ({
-  deviceLock: (...a) => mocks.deviceLock(...a),
-  confirmDeviceOwner: (...a) => mocks.confirmDeviceOwner(...a),
-}))
 
 const fail = (status, data) => Object.assign(new Error(data?.error || 'HTTP ' + status), { status, data })
 
@@ -83,7 +78,6 @@ function sheet(props = {}) {
 }
 
 beforeEach(() => {
-  mocks.MOBILE = false
   mocks.webauthn = true
   mocks.proofs = { passkeys: [{ id: 'k1' }], password: true }
   mocks.api.mockClear()
@@ -180,57 +174,6 @@ describe('DeleteAccountSheet', () => {
     expect(mocks.passkeyAssertion).not.toHaveBeenCalled()
     expect(mocks.deleteAccount).not.toHaveBeenCalled()
     expect(p.close).not.toHaveBeenCalled()
-  })
-
-  it('the phone app offers no passkey, which it cannot hold for the server, only the password', async () => {
-    mocks.MOBILE = true
-    const { host } = sheet()
-    await toProof(host)
-    expect(button(host, 'Confirm with a passkey')).toBeUndefined()
-    expect(password(host)).toBeTruthy()
-  })
-
-  it('a phone with no password: its own lock is asked, then the pairing carries the delete', async () => {
-    mocks.MOBILE = true
-    mocks.proofs = { passkeys: [{ id: 'k1' }], password: false }
-    const { p, host } = sheet()
-    await toProof(host)
-    expect(host.textContent).toContain('Your phone checks that it’s you (face, fingerprint or passcode), then the account is deleted.')
-    expect(password(host)).toBeNull()
-    await act(async () => { button(host, 'Delete forever').click() })
-    await settle()
-    expect(mocks.confirmDeviceOwner).toHaveBeenCalledWith('Confirm it’s you to delete your openGym account')
-    expect(mocks.deleteAccount).toHaveBeenCalledWith('Mallory', {})
-    expect(mocks.confirmDeviceOwner.mock.invocationCallOrder[0]).toBeLessThan(mocks.deleteAccount.mock.invocationCallOrder[0])
-    expect(p.done).toHaveBeenCalled()
-  })
-
-  it('backed out of the phone’s lock, or failed: nothing is sent and the sheet stays', async () => {
-    mocks.MOBILE = true
-    mocks.proofs = { passkeys: [], password: false }
-    const { p, host } = sheet()
-    await toProof(host)
-    for (const answer of ['cancelled', 'failed']) {
-      mocks.confirmDeviceOwner.mockResolvedValueOnce(answer)
-      await act(async () => { button(host, 'Delete forever').click() })
-      await settle()
-      expect(alertText(host)).toBe('Not confirmed on this phone. Nothing was deleted.')
-    }
-    expect(mocks.deleteAccount).not.toHaveBeenCalled()
-    expect(p.close).not.toHaveBeenCalled()
-  })
-
-  it('a phone with no screen lock says the typed name is the only check, and goes ahead', async () => {
-    mocks.MOBILE = true
-    mocks.lock = 'none'
-    mocks.proofs = { passkeys: [], password: false }
-    mocks.confirmDeviceOwner.mockResolvedValue('none')
-    const { host } = sheet()
-    await toProof(host)
-    expect(host.textContent).toContain('This phone has no screen lock, so the name you typed is the only check.')
-    await act(async () => { button(host, 'Delete forever').click() })
-    await settle()
-    expect(mocks.deleteAccount).toHaveBeenCalledWith('Mallory', {})
   })
 
   it('the web build never asks the phone’s lock', async () => {

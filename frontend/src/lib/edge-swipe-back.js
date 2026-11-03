@@ -1,26 +1,4 @@
-// Swipe from the left edge to go back, the iPhone way (owner request).
-//
-// Only where the screen shows its own back button: every page-level back arrow carries
-// `data-back`, and the gesture does exactly what that button does, by clicking it. No button,
-// no gesture: a tab root, the workout screen, anything behind an open sheet. So it can never
-// leave the app or go somewhere the screen does not offer.
-//
-// Only on iOS and only where nothing else does it: the iPhone/iPad app (Capacitor, whose web
-// view has no back gesture of its own) and the home-screen web app (standalone, where Safari's
-// edge swipe is gone). Android has its system back (lib/back.js), a Safari tab has its own.
-//
-// Only from the edge (EDGE_PX), so the swipe cards, the set rows, the chip strips and the sliders
-// keep every touch that starts anywhere else. A touch that does start at the edge is claimed
-// before any of them sees it (a capture listener on the window), and given back by no one: a
-// set row under the thumb at the very edge does not open while the page goes back.
-//
-// The page follows the finger over a dimmed backdrop (the previous page is not rendered, so
-// the backdrop stands in for it); past a third of the width, or flicked, it goes; otherwise it
-// springs back. With reduced motion nothing moves: the same decision, then just the navigation.
-// Right-to-left languages mirror all of it: the right edge, swiping left.
-import { MOBILE, nativePlatform } from './mobile.js'
-
-export const EDGE_PX = 20          // how close to the edge a back swipe must start
+export const EDGE_PX = 20;          // how close to the edge a back swipe must start
 export const SLOP_PX = 10          // movement before the gesture decides sideways or not
 export const COMMIT_FRACTION = 1 / 3
 export const FLICK_PX_PER_MS = 0.5 // a flick this fast goes back from any distance past the slop
@@ -32,9 +10,8 @@ export const BACK_PREVIEW_EVENT = 'opengym:back-preview'
 
 /* ---------- pure decisions ---------- */
 
-/** Whether this build and device get the gesture at all. */
-export function edgeSwipeEnabled({ mobile, platform, ios, standalone }) {
-  if (mobile) return platform === 'ios'
+/** Whether this device gets the gesture at all. */
+export function edgeSwipeEnabled({ ios, standalone }) {
   return !!ios && !!standalone
 }
 
@@ -93,8 +70,7 @@ export function installEdgeSwipeBack(win = window, opts = {}) {
       (/Macintosh/.test(win.navigator.userAgent) && (win.navigator.maxTouchPoints || 0) > 1)   // iPadOS
     let standalone = false
     try { standalone = !!(win.matchMedia?.('(display-mode: standalone)').matches || win.navigator.standalone === true) } catch { /* not standalone */ }
-    if (MOBILE) nativePlatform().then(p => { enabled = edgeSwipeEnabled({ mobile: true, platform: p }) })
-    else enabled = edgeSwipeEnabled({ mobile: false, ios, standalone })
+    enabled = edgeSwipeEnabled({ ios, standalone })
   }
 
   let g = null   // { id, x0, y0, lastX, lastT, vx, rtl, width, target, path, lock, page, under, shade }

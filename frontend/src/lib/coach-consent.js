@@ -1,21 +1,4 @@
-// Who the Coach may send your training to, as this device remembers it.
-//
-// The intake's consent (S.coach.consent) says yes to the Coach as an idea. This says yes to one
-// particular AI service: the first request that would send training data to a provider asks,
-// once, naming the provider and what goes there (components/CoachConsentSheet.jsx), and the
-// answer is kept per provider and host. Point the Coach somewhere else and it asks again.
-//
-// A device fact, not training data, so not in S: it must not sync a yes given on one phone to
-// another device that never showed the question, nor ride into an export. On the mobile build
-// it is also written to a file, because the WebView may evict localStorage, and an app that
-// forgets your answer asks again, which is annoying but never wrong.
-//
-// A model on your own machine or network (Ollama on the LAN, a box on your tailnet) is not a
-// third party, so it is not asked about: see isLocalHost.
-import { MOBILE, readJsonFile, writeJsonFile } from './mobile.js'
-
-const KEY = 'gym_coach_ai_consent'
-const FILE = 'opengym-coach-consent.json'
+const KEY = 'gym_coach_ai_consent';
 
 // The name a person knows the company by. A compatible endpoint is whatever it was pointed at,
 // so it is named by its host; the runtime providers on a server talk to the same companies.
@@ -67,14 +50,13 @@ const readLocal = () => { try { return JSON.parse(localStorage.getItem(KEY)) } c
 
 async function load() {
   if (cache) return cache
-  const saved = (MOBILE && await readJsonFile(FILE)) || readLocal()
+  const saved = readLocal()
   cache = saved && typeof saved === 'object' && saved.list && typeof saved.list === 'object' ? saved : { list: {} }
   return cache
 }
 async function save(next) {
   cache = next
   try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { /* the file, or memory, still has it */ }
-  if (MOBILE) await writeJsonFile(FILE, next)
   listeners.forEach(fn => { try { fn() } catch { /* a listener's problem */ } })
 }
 

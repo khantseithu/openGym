@@ -25,7 +25,6 @@ import { mediaStore as sharedStore } from './media-store.js'
 import { api, apiBlob, apiUpload } from './api.js'
 import { prefetchAllowed } from './media-prefetch.js'
 import { MB, BG_UPLOAD_METERED_MAX_MB, LOCAL_CACHE_MAX_MB, LOCAL_GC_GRACE_MS, limitsFrom, fmtMB } from './media-limits.js'
-import { MOBILE, nativeLoad } from './mobile.js'
 import { registerMediaRunner, publishMediaStatus, pendingRefCount, loadPending } from './media-owed.js'
 import { t } from './i18n-core.js'
 
@@ -64,10 +63,6 @@ export function createMediaSync(deps = {}) {
     toast: msg => import('../store/useUI.js').then(({ useUI }) => useUI.getState().toast(msg)).catch(() => {}),
     locks: globalThis.navigator?.locks,
     storage: (() => { try { return globalThis.localStorage } catch { return null } })(),
-    // The phone's file mirror of the state (lib/mobile.js), read by the local clean-up: on a
-    // phone it is the durable copy and can be newer than localStorage (evicted WebView storage,
-    // a write refused for room), so what it refers to is kept even if memory does not know it yet.
-    nativeLoad: MOBILE ? () => nativeLoad() : null,
     ...deps
   }
   let store = d.store || null
@@ -351,7 +346,7 @@ export function createMediaSync(deps = {}) {
       try {
         for (const f of want()) {
           if (!d.allowed()) break
-          if (await d.media.has(f.hash) || !mayFetch(f.hash)) continue
+          if ((await d.media.has(f.hash)) || !mayFetch(f.hash)) continue
           try { await fetchToStore(f.hash, f) } catch (e) { if (e?.code === 'offline' || e?.code === 'unavailable') break }
         }
       } finally { busy = false }

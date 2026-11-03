@@ -8,12 +8,10 @@ want. Run them from the repository root with Node 22 unless noted.
 | Script | What it does |
 |---|---|
 | `build-api-docs.mjs` | `website/api.html` from `api/openapi.yaml`. `--check` fails when it is stale |
-| `build-coach-assets.mjs` | `api/coach/core/library-data.js` and `prompts.js`, the Coach's copy of the catalogue and its prompts. `--check` in CI |
-| `build-coach-library.mjs` | Old name of the one above, only forwards to it |
 | `catalogue/validate.mjs` | Checks every entry in `catalogue/` (fields, words, ids) |
 | `catalogue/build.mjs` | Builds the app's exercise files from `catalogue/`. `--check` fails when they are out of date |
 | `catalogue/check-media.mjs` | Fails on any media file over 180 px (the licence) or in a format the app can't show |
-| `catalogue/stage-media.mjs` | Copies the stills and animations next to a built app (`npm run build:mobile`, the demo) |
+| `catalogue/stage-media.mjs` | Copies the stills and animations next to a built app |
 | `ci/fork-mr-pipelines.py` | GitLab mirror only: starts pipelines for merge requests from forks |
 
 ## Used when you change something

@@ -20,7 +20,6 @@ vi.mock('../store/useUI.js', () => {
   useUI.getState = snap
   return { useUI }
 })
-vi.mock('../lib/mobile.js', () => ({ MOBILE: true, shareExport: (...a) => mocks.share(...a) }))
 
 const { CsvExportSheet } = await import('./CsvExportSheet.jsx')
 const { todayISO } = await import('../lib/format.js')
@@ -65,24 +64,5 @@ describe('CsvExportSheet', () => {
 
   it('leaves measurements out of the line when there are none', () => {
     expect(count('body')).toBe('1 weigh-in')
-  })
-
-  it('shares the workouts file on the phone, named by the day', async () => {
-    act(() => button('4 weeks').click())
-    act(() => button('Workouts (CSV)').click())
-    await flush()
-    expect(close).toHaveBeenCalled()
-    const [text, name] = mocks.share.mock.calls[0]
-    expect(name).toBe('opengym-workouts-' + todayISO() + '.csv')
-    expect(text.trim().split('\r\n')).toHaveLength(3)
-    expect(mocks.toast).toHaveBeenCalledWith('CSV exported')
-  })
-
-  it('shares body weight as its own file', async () => {
-    act(() => button('Body weight & measurements (CSV)').click())
-    await flush()
-    const [text, name] = mocks.share.mock.calls[0]
-    expect(name).toBe('opengym-body-' + todayISO() + '.csv')
-    expect(text).toContain('weight_kg')
   })
 })

@@ -8,7 +8,7 @@
 // card is actually shown, on every platform — the PWA renders the same code as the app.
 //
 // Scope: lean-qr generates QR codes only. A gym card is virtually always a QR code, and the
-// capture flow (lib/scan.js) refuses any symbology we cannot faithfully reproduce, so a stored
+// capture flow refuses any symbology we cannot faithfully reproduce, so a stored
 // card is guaranteed renderable here — canRenderFmt() is the single source of that truth, shared
 // by both sides.
 

@@ -49,9 +49,7 @@ vi.mock('../lib/api.js', () => ({
 }))
 vi.mock('../lib/push.js', () => ({ pushSupported: () => false, enablePush: vi.fn(), disablePush: vi.fn(), sendTestPush: vi.fn() }))
 vi.mock('../lib/wakelock.js', () => ({ wakeLockSupported: () => false }))
-vi.mock('../lib/mobile.js', () => ({ MOBILE: false, isAndroid: () => Promise.resolve(false), shareExport: vi.fn(), syncReminder: vi.fn() }))
 vi.mock('../lib/coach-api.js', () => ({ forgetCoach: (...a) => mocks.forgetCoach(...a) }))
-vi.mock('./MobileOnboarding.jsx', () => ({ ConnectSheet: () => null }))
 vi.mock('../sheets.jsx', () => ({
   starterPlanSheet: vi.fn(), confirmSheet: (...a) => mocks.confirmSheet(...a), importFromApp: vi.fn(),
   importFromHevy: vi.fn(), equipmentProfileSheet: vi.fn(), menuSheet: vi.fn(),
@@ -127,29 +125,6 @@ describe('Settings — reset everything', () => {
     expect(serverForgetCalls()).toHaveLength(1)
     expect(mocks.resetEverything).toHaveBeenCalledTimes(1)
     expect(mocks.toast).toHaveBeenCalledWith('All data reset')
-  })
-
-  // A paired phone running the Coach with its own key has Coach data in both homes.
-  it('paired phone with its own key: clears the Coach on the server and on the device', () => {
-    mocks.user = { uid: 'u1', name: 'Ana' }
-    mocks.coachLocal = { mode: 'byok', provider: 'anthropic' }
-    mount()
-    const dialog = openDialog()
-    act(() => { dialog.onConfirm() })
-    expect(serverForgetCalls()).toHaveLength(1)
-    expect(mocks.forgetCoach).toHaveBeenCalledTimes(1)
-    expect(mocks.resetEverything).toHaveBeenCalledTimes(1)
-    expect(mocks.toast).toHaveBeenCalledWith('All data reset')
-  })
-
-  it('own key, no server: clears the device Coach without touching the server', () => {
-    mocks.coachLocal = { mode: 'byok', provider: 'anthropic' }
-    mount()
-    const dialog = openDialog()
-    act(() => { dialog.onConfirm() })
-    expect(serverForgetCalls()).toHaveLength(0)
-    expect(mocks.forgetCoach).toHaveBeenCalledTimes(1)
-    expect(mocks.resetEverything).toHaveBeenCalledTimes(1)
   })
 })
 

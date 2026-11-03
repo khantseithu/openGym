@@ -166,34 +166,11 @@ export function setPlayOnSilent(on) {
 // by App.jsx, so the places that buzz do not each have to read the profile. On by default.
 let buzz = true
 export function setVibrate(on) { buzz = on !== false }
-// Offered where the browser can buzz at all: iOS has no navigator.vibrate. The Android app needs
-// android.permission.VIBRATE in its manifest, without which the WebView drops every call. The
-// iPhone app buzzes through its native side instead (RestAlertPlugin.swift buzz), which App.jsx
-// hands in here as the native buzzer.
-let nativeBuzzer = null
-export function setNativeBuzzer(fn) { nativeBuzzer = typeof fn === 'function' ? fn : null }
-export const vibrateSupported = () => !!nativeBuzzer || (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function')
+// Offered where the browser can buzz at all: iOS has no navigator.vibrate.
+export const vibrateSupported = () => (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function')
 export function vibrate(p) {
   if (!buzz) return
-  if (nativeBuzzer) {
-    try { Promise.resolve(nativeBuzzer(p)).catch(() => {}) } catch (e) { /* */ }
-    return
-  }
   try { navigator.vibrate && navigator.vibrate(p) } catch (e) { /* */ }
 }
 
-// Settings → "Vibrate when the phone is on silent" (#375), Android app only. The page's buzz is an
-// ordinary one, and a phone on silent drops it; the end of a rest or a hold then goes through the
-// native side as an alarm (lib/rest-alert.js buzzAsAlarm), which silent mode lets through. App.jsx
-// hands that buzzer in while the setting is on; it answers false when it could not buzz, and the
-// page's own buzz stands in. A set tick never comes here: it should not override silent.
-let alarmBuzzer = null
-export function setAlarmBuzzer(fn) { alarmBuzzer = typeof fn === 'function' ? fn : null }
-export function alertBuzz(p) {
-  if (!buzz) return
-  const native = alarmBuzzer
-  if (!native) { vibrate(p); return }
-  let asked
-  try { asked = Promise.resolve(native(p)) } catch (e) { asked = Promise.resolve(false) }
-  asked.then(ok => { if (!ok) vibrate(p) }, () => vibrate(p))
-}
+export const alertBuzz = vibrate

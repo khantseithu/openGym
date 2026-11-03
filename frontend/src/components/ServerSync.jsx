@@ -8,11 +8,9 @@ import { useUI } from '../store/useUI.js'
 import { t, tn } from '../lib/i18n.js'
 import { fmtAgo, changeCount } from '../lib/format.js'
 import { passkeyLogin, passkeyError, webauthnOK } from '../lib/api.js'
-import { MOBILE, shareExport } from '../lib/mobile.js'
 import { syncMedia } from '../lib/media-sync.js'
 import { NO_SERVER } from '../lib/demo.js'
 import { askAddDeviceData, menuSheet } from '../sheets.jsx'
-import { ConnectSheet, CfAccessSheet } from '../views/MobileOnboarding.jsx'
 import { passwordOn, openPasswordSignIn } from './PasswordAuth.jsx'
 import { Section, Row, Button } from './ui.jsx'
 
@@ -50,11 +48,11 @@ export function useOnline() {
      line    the short status line: Settings, and the toast after "Sync now"
      banner  the sentence the persistent indicator shows, or null when there is nothing to say
      action  what the indicator offers: 'retry' | 'pair' | 'signin' | 'connect' | null
-   `mobile` is the build (a phone pairs, a browser signs in); `online` whether the device has a
+   `online` is whether the device has a
    network, which decides whether "offline" is the device or the server. Every state that is not
    'ok' says the changes are kept on this device — that is the one thing the person needs to hear
    first. */
-export function connectionView(sync, { mobile = MOBILE, online = isOnline() } = {}) {
+export function connectionView(sync, { online = isOnline() } = {}) {
   if (!sync) return null
   const err = sync.lastError || {}
   // A device that says it has no network is offline whatever the last request found: said the
@@ -86,19 +84,11 @@ export function connectionView(sync, { mobile = MOBILE, online = isOnline() } = 
         ? { tone: 'bad', icon: 'warning', action: 'retry', line: t('Not an openGym answer (HTTP {0})', err.status), banner: t('Your server’s address answered with something other than openGym (HTTP {0}). Your changes are kept here.', err.status) }
         : { tone: 'bad', icon: 'warning', action: 'retry', line: t('Server error (HTTP {0})', err.status), banner: t('Your server answered with an error (HTTP {0}). Your changes are kept here.', err.status) }
     case 'auth':
-      if (!mobile) return { tone: 'bad', icon: 'lock', action: 'signin', line: t('The server refuses this browser'), banner: t('Your server no longer accepts this browser. Your changes are kept here.') }
-      // A phone an earlier version unpaired kept no address and no token: nothing refuses it,
-      // there is simply nothing to ask.
-      return err.code === 'not-paired'
-        ? { tone: 'bad', icon: 'lock', action: 'pair', line: t('This phone is not connected to a server.'), banner: t('This phone is no longer paired with your server. Your changes are kept here.') }
-        : { tone: 'bad', icon: 'lock', action: 'pair', line: t('The server refuses this phone'), banner: t('Your server no longer accepts this phone. Your changes are kept here.') }
-    // 'local': no server at all. On a phone that is a choice that needs no reminder (#454, #369):
-    // Settings still says it and offers Connect, the bar stays away. A guest in a browser is on a
-    // server it could sign in to, so it still hears that its data stays in this browser.
+      return { tone: 'bad', icon: 'lock', action: 'signin', line: t('The server refuses this browser'), banner: t('Your server no longer accepts this browser. Your changes are kept here.') }
+    // 'local': a guest in a browser is on a server it could sign in to, so it still hears that
+    // its data stays in this browser.
     default:
-      return mobile
-        ? { tone: 'quiet', icon: 'lock', action: 'connect', line: t('On this phone only, not connected to a server'), banner: null }
-        : { tone: 'quiet', icon: 'lock', action: canSignIn() ? 'signin' : null, line: t('Guest mode: your data lives only in this browser.'), banner: t('Guest mode: your data lives only in this browser.') }
+      return { tone: 'quiet', icon: 'lock', action: canSignIn() ? 'signin' : null, line: t('Guest mode: your data lives only in this browser.'), banner: t('Guest mode: your data lives only in this browser.') }
   }
 }
 
@@ -112,16 +102,6 @@ export async function syncNowWithToast() {
   const view = connectionView(sync)
   if (view) toast(view.line)
   return sync
-}
-
-// A phone whose server refuses it, or that an earlier version unpaired: the connect sheet, with
-// the address it had where it still has one. The same account merges what the phone kept.
-export function pairAgain() {
-  const server = useStore.getState().sync?.server || ''
-  ui().openSheet(close => <ConnectSheet close={close} initialUrl={server} again />)
-}
-export function connectServer() {
-  ui().openSheet(close => <ConnectSheet close={close} />)
 }
 
 // A browser whose session ended, or a guest: the passkey sign-in, and the same account merges
@@ -149,7 +129,6 @@ export async function passkeySignIn() {
    the device until it reaches this server as this account again. `done(result)` runs once the
    device has actually left. */
 const LEAVE = {
-  disconnect: { run: (st, o) => st.disconnectServer(o), anyway: () => t('Disconnect anyway'), failed: () => t('Couldn’t disconnect. You’re still connected.') },
   signout: { run: (st, o) => st.signOut(o), anyway: () => t('Sign out anyway'), failed: () => t('Couldn’t sign out. You’re still signed in.') },
   everywhere: { run: (st, o) => st.signOutAll(o), anyway: () => t('Sign out anyway'), failed: () => t('Couldn’t sign out everywhere. You’re still signed in.') },
 }
@@ -205,32 +184,31 @@ export function OwedSheet({ kind, count: count0, media: media0 = 0, exportBackup
     if (r.owed && !r.stashed) { toast(t('Couldn’t keep a copy of the changes on this device. Nothing was removed.')); return }
     finish(r)
   }
-  return <div style={{ textAlign: 'center', padding: '4px 0' }}>
-    <h3 style={{ marginBottom: 8 }}>{t('Not everything is on your server yet')}</h3>
-    {(count !== 0 || !media) && <div style={{ marginBottom: 6, fontWeight: 600 }}>
-      {count > 0 ? t('Not on your server yet: {0}', changeCount(count)) : t('Some changes on this device have not reached your server.')}
-    </div>}
-    {media > 0 && <div style={{ marginBottom: 6, fontWeight: 600 }}>{tn('{0} photo or video has not reached your server yet.', '{0} photos or videos have not reached your server yet.', media)}</div>}
-    {(tried || refused) && view && <div className="small" style={{ color: 'var(--red)', marginBottom: 6 }}>{view.line}</div>}
-    {/* It names the button below it: Try again, or Pair again / Sign in where the server refuses. */}
-    <div className="muted small" style={{ marginBottom: 18, lineHeight: 1.5 }}>
-      {refused
-        ? (MOBILE
-          ? t('Pair again, or export a backup first. Going ahead anyway keeps a copy of these changes on this device until it connects to this server as this account again. Then they’re added back.')
-          : t('Sign in again, or export a backup first. Going ahead anyway keeps a copy of these changes on this device until it connects to this server as this account again. Then they’re added back.'))
-        : t('Try again, or export a backup first. Going ahead anyway keeps a copy of these changes on this device until it connects to this server as this account again. Then they’re added back.')}
+  return (
+    <div style={{ textAlign: 'center', padding: '4px 0' }}>
+      <h3 style={{ marginBottom: 8 }}>{t('Not everything is on your server yet')}</h3>
+      {(count !== 0 || !media) && <div style={{ marginBottom: 6, fontWeight: 600 }}>
+        {count > 0 ? t('Not on your server yet: {0}', changeCount(count)) : t('Some changes on this device have not reached your server.')}
+      </div>}
+      {media > 0 && <div style={{ marginBottom: 6, fontWeight: 600 }}>{tn('{0} photo or video has not reached your server yet.', '{0} photos or videos have not reached your server yet.', media)}</div>}
+      {(tried || refused) && view && <div className="small" style={{ color: 'var(--red)', marginBottom: 6 }}>{view.line}</div>}
+      {/* It names the button below it: Try again, or Pair again / Sign in where the server refuses. */}
+      <div className="muted small" style={{ marginBottom: 18, lineHeight: 1.5 }}>
+        {refused
+          ? (t('Sign in again, or export a backup first. Going ahead anyway keeps a copy of these changes on this device until it connects to this server as this account again. Then they’re added back.'))
+          : t('Try again, or export a backup first. Going ahead anyway keeps a copy of these changes on this device until it connects to this server as this account again. Then they’re added back.')}
+      </div>
+      {refused && canSignIn() && <><button className="btn primary" disabled={busy} onClick={() => { close(); signInAgain() }}>{pwOn() ? t('Sign in') : t('Sign in with passkey')}</button><div style={{ height: 8 }} /></>}
+      {!refused && <><button className="btn primary" disabled={busy} onClick={retry}>{busy ? t('Syncing…') : t('Try again')}</button><div style={{ height: 8 }} /></>}
+      {media > 0 && exportBackupZip
+        ? <Button icon="share" disabled={busy} onClick={exportBackupZip}>{t('Export with photos & videos (.zip)')}</Button>
+        : <Button icon="share" disabled={busy} onClick={exportBackup}>{t('Export backup (JSON)')}</Button>}
+      <div style={{ height: 8 }} />
+      <button className="btn danger" disabled={busy} onClick={anyway}>{LEAVE[kind].anyway()}</button>
+      <div style={{ height: 8 }} />
+      <Button variant="ghost" className="dim" disabled={busy} onClick={close}>{t('Cancel')}</Button>
     </div>
-    {refused && MOBILE && <><button className="btn primary" disabled={busy} onClick={() => { close(); pairAgain() }}>{t('Pair again')}</button><div style={{ height: 8 }} /></>}
-    {refused && !MOBILE && canSignIn() && <><button className="btn primary" disabled={busy} onClick={() => { close(); signInAgain() }}>{pwOn() ? t('Sign in') : t('Sign in with passkey')}</button><div style={{ height: 8 }} /></>}
-    {!refused && <><button className="btn primary" disabled={busy} onClick={retry}>{busy ? t('Syncing…') : t('Try again')}</button><div style={{ height: 8 }} /></>}
-    {media > 0 && exportBackupZip
-      ? <Button icon="share" disabled={busy} onClick={exportBackupZip}>{t('Export with photos & videos (.zip)')}</Button>
-      : <Button icon="share" disabled={busy} onClick={exportBackup}>{t('Export backup (JSON)')}</Button>}
-    <div style={{ height: 8 }} />
-    <button className="btn danger" disabled={busy} onClick={anyway}>{LEAVE[kind].anyway()}</button>
-    <div style={{ height: 8 }} />
-    <Button variant="ghost" className="dim" disabled={busy} onClick={close}>{t('Cancel')}</Button>
-  </div>
+  );
 }
 
 /* ---------------------------------------------------------------- Settings ------------------- */
@@ -264,22 +242,21 @@ export function ServerSyncSection({ children }) {
     setBusy(true)
     try { await syncNowWithToast() } finally { setBusy(false) }
   }
-  return <Section title={t('Server & sync')}>
-    {/* No address: a phone an earlier version unpaired. The status row below already says it is
-        not connected; this row only says which server, and there is none to name. */}
-    <Row icon="globe" iconTint="var(--blue)" title={sync.server ? hostOf(sync.server) : t('Server address unknown')}
-      subtitle={t('Signed in as {0}', user.name)} />
-    <Row icon={view.icon} iconTint={TINT[view.tone]} title={view.line} subtitle={sub} className="sync-status" />
-    <Row icon="reset" iconTint="var(--acc)" title={busy ? t('Syncing…') : t('Sync now')} onClick={now} />
-    {MOBILE && <Row icon="key" iconTint="var(--orange)" title={t('Cloudflare Access')} accessory="chevron"
-      onClick={() => ui().openSheet(close => <CfAccessSheet close={close} server={sync.server || ''} />)} />}
-    {sync.status === 'auth' && (MOBILE
-      ? <Row icon="qr" iconTint="var(--indigo)" title={t('Pair again')} subtitle={t('Your changes are kept here, and merged into your account once it is paired again.')} accessory="chevron" onClick={pairAgain} />
-      : canSignIn() && <Row icon={pwOn() ? 'person' : 'fingerprint'} iconTint="var(--blue)" title={pwOn() ? t('Sign in') : t('Sign in with passkey')} subtitle={t('Your changes are kept here, and merged into your account once you are signed in again.')} accessory="chevron" onClick={signInAgain} />)}
-    {/* another account's, kept when this one signed in over a copy that still owed them */}
-    <KeptChangesRows />
-    {children}
-  </Section>
+  return (
+    <Section title={t('Server & sync')}>
+      {/* No address: a phone an earlier version unpaired. The status row below already says it is
+          not connected; this row only says which server, and there is none to name. */}
+      <Row icon="globe" iconTint="var(--blue)" title={sync.server ? hostOf(sync.server) : t('Server address unknown')}
+        subtitle={t('Signed in as {0}', user.name)} />
+      <Row icon={view.icon} iconTint={TINT[view.tone]} title={view.line} subtitle={sub} className="sync-status" />
+      <Row icon="reset" iconTint="var(--acc)" title={busy ? t('Syncing…') : t('Sync now')} onClick={now} />
+
+      {sync.status === 'auth' && ((canSignIn() && <Row icon={pwOn() ? 'person' : 'fingerprint'} iconTint="var(--blue)" title={pwOn() ? t('Sign in') : t('Sign in with passkey')} subtitle={t('Your changes are kept here, and merged into your account once you are signed in again.')} accessory="chevron" onClick={signInAgain} />))}
+      {/* another account's, kept when this one signed in over a copy that still owed them */}
+      <KeptChangesRows />
+      {children}
+    </Section>
+  );
 }
 
 // The changes a forced sign-out or disconnect kept on this device, waiting for their server and
@@ -304,8 +281,7 @@ export function KeptChangesRows() {
     if (!state) return
     const json = JSON.stringify(state, null, 2)
     const name = 'opengym-kept-' + String(k.name || k.uid).replace(/[^\w-]+/g, '_') + '-' + new Date().toISOString().slice(0, 10) + '.json'
-    if (MOBILE) { try { await shareExport(json, name); useUI.getState().toast(t('Backup exported')) } catch { /* share sheet dismissed */ } return }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' })); a.download = name; a.click()
+    const a = document.createElement('a');a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));a.download = name;a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 60000)
     useUI.getState().toast(t('Backup exported'))
   }

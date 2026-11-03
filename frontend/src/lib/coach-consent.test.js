@@ -4,18 +4,10 @@
 // provider and host, on the phone in a file as well, and can be taken back.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ MOBILE: false, files: {} }))
-vi.mock('./mobile.js', () => ({
-  get MOBILE() { return mocks.MOBILE },
-  readJsonFile: async name => (name in mocks.files ? JSON.parse(mocks.files[name]) : null),
-  writeJsonFile: async (name, data) => { mocks.files[name] = JSON.stringify(data) },
-}))
 
 const { isLocalHost, consentTarget, hasAiConsent, allowAi, withdrawAi, aiConsents, onAiConsentChange, _resetAiConsent } = await import('./coach-consent.js')
 
 beforeEach(() => {
-  mocks.MOBILE = false
-  mocks.files = {}
   localStorage.clear()
   _resetAiConsent()
 })
@@ -73,14 +65,6 @@ describe('the remembered answer', () => {
 
   it('survives a restart: from localStorage on the web', async () => {
     await allowAi(openai)
-    _resetAiConsent()
-    expect(await hasAiConsent(openai)).toBe(true)
-  })
-
-  it('survives a restart on the phone even when the WebView lost its storage', async () => {
-    mocks.MOBILE = true
-    await allowAi(openai)
-    localStorage.clear()
     _resetAiConsent()
     expect(await hasAiConsent(openai)).toBe(true)
   })

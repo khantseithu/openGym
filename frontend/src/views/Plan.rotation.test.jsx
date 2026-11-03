@@ -29,7 +29,6 @@ vi.mock('../sheets.jsx', () => ({
   dayAssignSheet: vi.fn(), starterPlanSheet: vi.fn(), menuSheet: vi.fn(), confirmSheet: vi.fn(),
   planHasRoutines: () => true, exportPlanFile: vi.fn(), printWholePlan: vi.fn(), importPlanFile: vi.fn(),
 }))
-vi.mock('../lib/mobile.js', () => ({ MOBILE: false }))
 vi.mock('../lib/demo.js', () => ({ DEMO: false }))
 vi.mock('../lib/coach.js', () => ({ coachAvailable: () => false }))
 
