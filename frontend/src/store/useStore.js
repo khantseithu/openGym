@@ -337,7 +337,6 @@ function loadState() {
       return s
     }
   } catch (e) {
-    // Unreadable: the next save would overwrite it, so a copy stays aside for recovery by hand.
     try { if (raw) localStorage.setItem(KEY + '_unreadable', raw) } catch { /* no room for it */ }
   }
   return freshState()
@@ -2041,7 +2040,6 @@ export const useStore = create((set, get) => {
         finishBoot({ needsMobileOnboarding: !remote && !hasData(get().S) })
         return
       }
-      // Static build: no backend and nothing to seed, what is stored here is simply the app's.
       if (STATIC) {
         finishBoot()
         return

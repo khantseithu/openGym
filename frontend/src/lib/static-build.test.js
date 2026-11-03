@@ -74,7 +74,6 @@ describe('vercel.json', () => {
     expect(cfg.routes[0].headers['Content-Security-Policy']).toBe(dockerCsp)
   })
   it('deploys no functions, and answers a stray /api path 404 rather than with the app', () => {
-    // Without an explicit static build, Vercel turns the repository's api/ folder into functions.
     expect(cfg.functions).toBeUndefined()
     expect(cfg.builds.map(b => b.use)).toEqual(['@vercel/static-build'])
     const api = cfg.routes.find(r => r.status === 404 && new RegExp('^' + r.src + '$').test('/api/me'))

@@ -32,7 +32,6 @@ startMediaSync(useStore)
 // this keeps the focused field above it. Idle everywhere else.
 startNativeKeyboard()
 
-// This browser holds the only copy: ask it not to evict that under storage pressure. Best effort.
 if (STATIC) { try { navigator.storage?.persist?.()?.catch?.(() => {}) } catch { /* not offered */ } }
 
 // Not in the mobile build: the native shell already serves everything from disk.

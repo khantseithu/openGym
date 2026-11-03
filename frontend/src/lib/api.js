@@ -58,7 +58,6 @@ function refusal(status, body) {
   return (body && body.error) || ('HTTP ' + status)
 }
 
-// A static build has nothing behind it, and its host would answer a stray path anyway.
 const noServer = () => failure('This build has no server.', 'no-server', 0)
 
 export async function api(path, opts) {
