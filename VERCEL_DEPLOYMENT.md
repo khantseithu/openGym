@@ -37,11 +37,14 @@ A date-related Health test can fail outside UTC; run with `TZ=UTC` to compare ag
 
 ## Build and Vercel configuration
 
-`vercel.json` at the repository root sets everything; there are no project settings to keep in sync
-apart from the Git connection.
+`vercel.json` and `package.json` at the repository root set everything; the only project setting that
+matters is the Git connection.
 
-- Install: `npm ci --prefix frontend --ignore-scripts`
-- Build: `npm --prefix frontend run build:static` (Vite, then `scripts/catalogue/stage-media.mjs`)
+- Builder: `@vercel/static-build`, set explicitly. Without it Vercel turns the repository's `api/` folder
+  into Serverless Functions and the deployment fails on Hobby's limit of 12. Do not remove `builds`, and do not
+  ignore `api/` either, because the frontend imports `api/coach/core` at build time.
+- Build: the `vercel-build` script in the root `package.json` installs `frontend/` and runs
+  `build:static` (Vite, then `scripts/catalogue/stage-media.mjs`)
 - Output: `frontend/dist`, about 250 MB and 13,000 files
 - Routes: the app routes behind the hash (`/#/plan/r/<id>`), so reloading a nested route needs nothing
   from the host. A plain path such as `/plan` redirects to `/#/plan`. Missing files and `/api/*` answer

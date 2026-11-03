@@ -1,9 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": null,
-  "installCommand": "npm ci --prefix frontend --ignore-scripts",
-  "buildCommand": "VITE_SOURCE_URL=https://github.com/khantseithu/openGym npm --prefix frontend run build:static",
-  "outputDirectory": "frontend/dist",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "frontend/dist"
+      }
+    }
+  ],
   "routes": [
     {
       "src": "/.*",
