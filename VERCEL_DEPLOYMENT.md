@@ -75,8 +75,21 @@ TZ=UTC npm --prefix frontend test
 git push -u origin upstream-sync     # check the preview, then merge into main
 ```
 
-The changes here are small and mostly behind `STATIC`, so conflicts should be rare. Never open a pull
-request against upstream by accident: `gh pr create` needs `--repo khantseithu/openGym`.
+This fork removed what the static deployment does not use, so a merge reports modify/delete conflicts when
+upstream changes those files. Keep them deleted, then commit and run the tests:
+
+```bash
+git status --short | awk '/^(DU|UD) /{print $2}' | xargs git rm -q
+```
+
+Also delete any new upstream test that fails only because it reads a removed path. Never open a pull request
+against upstream by accident: `gh pr create` needs `--repo khantseithu/openGym`.
+
+Removed from this fork: `frontend/android`, `frontend/ios`, `helm`, `kubernetes`, `contrib`, `website`, `mcp`,
+GitHub and GitLab CI, Docker Compose, the API server (except `api/coach/core`, which the frontend build imports,
+and `api/sync-stamps.js`, which the sync tests compare against) and the tests that only checked those. To run the
+server or build the native apps, use upstream. `CLAUDE.md`, `README.md` and `docs/` are upstream's and still
+describe them.
 
 ## Your data: limits of browser storage
 
@@ -119,7 +132,7 @@ If stored data is ever unreadable, the app starts empty and keeps the raw text i
 - Web push: rest-timer and workout reminders when the app is closed. The rest timer itself works in the app
 - AI Coach (the server path; the phone-only path exists only in the native apps)
 - Admin dashboard, invites, activity log, server-side media sync
-- The MCP server, which reads a server's data folder
+- The MCP server and the native iPhone, Android and Watch apps (removed from this fork; upstream has them)
 
 Hevy API import remains optional: it runs only when you use it, and it talks directly to Hevy with your key.
 
