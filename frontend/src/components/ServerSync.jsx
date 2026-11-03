@@ -10,7 +10,7 @@ import { fmtAgo, changeCount } from '../lib/format.js'
 import { passkeyLogin, passkeyError, webauthnOK } from '../lib/api.js'
 import { MOBILE, shareExport } from '../lib/mobile.js'
 import { syncMedia } from '../lib/media-sync.js'
-import { DEMO } from '../lib/demo.js'
+import { NO_SERVER } from '../lib/demo.js'
 import { askAddDeviceData, menuSheet } from '../sheets.jsx'
 import { ConnectSheet, CfAccessSheet } from '../views/MobileOnboarding.jsx'
 import { passwordOn, openPasswordSignIn } from './PasswordAuth.jsx'
@@ -296,7 +296,7 @@ export function KeptChangesRows() {
     if (typeof kept === 'function') kept().then(r => { if (!gone) setRows(r || []) }).catch(() => {})
     return () => { gone = true }
   }, [kept, user?.id, rev])
-  if (DEMO) return null
+  if (NO_SERVER) return null
   // A copy kept for an account that may never come back here (its server lost it, or it was
   // deleted) is saved as a backup file, to import into another profile with "Merge them in".
   const save = async k => {
