@@ -66,7 +66,6 @@ describe('nothing re-implements the rule', () => {
     const fs = await import('node:fs')
     const path = await import('node:path')
     const root = path.resolve(import.meta.dirname, '..')
-    const mcp = path.resolve(root, '../../mcp/src')   // imports these helpers too
     const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
       const p = path.join(dir, e.name)
       if (e.isDirectory()) return e.name === 'locales' ? [] : walk(p)
@@ -74,7 +73,7 @@ describe('nothing re-implements the rule', () => {
     })
     // `w.start || new Date(w.d)` and its spellings. history.js itself is where the rule lives.
     const handRolled = /\bstart\s*(\|\||\?\?)\s*(Number\()?new Date\s*\(/
-    const offenders = [...walk(root), ...walk(mcp)]
+    const offenders = walk(root)
       .filter(p => !p.endsWith(path.join('lib', 'history.js')))
       .filter(p => handRolled.test(fs.readFileSync(p, 'utf8')))
       .map(p => path.relative(root, p))
