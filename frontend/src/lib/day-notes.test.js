@@ -5,7 +5,6 @@ import * as Server from '../../../api/sync-stamps.js'
 import { DAY_NOTE_TAGS, DAY_NOTE_LABEL, DAY_NOTE_ICON, canNoteDay, dayNoteLine, dayNoteOf, excusedOn, readDayNote, withDayNote } from './day-notes.js'
 import { highestStamp, localExtras, mergeStates, resetIdsOf, stampChange, STAMPED_MAPS } from './sync-merge.js'
 import { NOTE_MAX } from './history.js'
-import { buildReminderNotifications } from './mobile.js'
 
 const base = (over = {}) => ({
   unit: 'kg', week: {}, dayPlan: {}, workouts: [], routines: [], bodyweight: [], customEx: [], favEx: [],
@@ -125,12 +124,3 @@ describe('day notes across devices', () => {
   })
 })
 
-describe('the workout-day reminder on a noted day (mobile)', () => {
-  it('skips today once it carries a note', () => {
-    const S = base({ routines: [{ id: 'r', name: 'Push', ex: [] }], week: { 0: 'r', 1: 'r', 2: 'r', 3: 'r', 4: 'r', 5: 'r', 6: 'r' }, reminder: { on: true, time: '18:00' } })
-    const now = new Date(2026, 9, 9, 9, 0)
-    expect(buildReminderNotifications(S, now)[0].schedule.at.getDate()).toBe(9)
-    const noted = { ...S, dayNotes: withDayNote({}, '2026-10-09', { tag: 'sick' }, 1) }
-    expect(buildReminderNotifications(noted, now)[0].schedule.at.getDate()).toBe(10)
-  })
-})

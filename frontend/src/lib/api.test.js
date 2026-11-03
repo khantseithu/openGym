@@ -74,14 +74,6 @@ describe('api() refuses an answer that is not the server\'s', () => {
     vi.stubGlobal('fetch', async () => new Response('<html>Bad gateway</html>', { status: 502, headers: { 'content-type': 'text/html' } }))
     await expect(api('/api/data')).rejects.toMatchObject({ status: 502, message: 'HTTP 502', data: {} })
   })
-
-  it('pairing with something that is not an openGym server fails instead of saving an empty pairing', async () => {
-    const { pairRedeem } = await import('./api.js')
-    vi.stubGlobal('fetch', async () => html())
-    await expect(pairRedeem('https://gym.example.com', 'ABCD2345')).rejects.toMatchObject({ code: 'bad-response' })
-    vi.stubGlobal('fetch', async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }))
-    await expect(pairRedeem('https://gym.example.com', 'ABCD2345')).rejects.toMatchObject({ code: 'bad-response' })
-  })
 })
 
 // A request that never answers used to hold every later push and pull behind it, silently, for

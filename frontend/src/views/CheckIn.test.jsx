@@ -22,14 +22,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 const mocks = vi.hoisted(() => ({
   S: null,
-  MOBILE: false,
   writes: [],          // { push } per update() call, in order
   sheets: [],          // every openSheet render fn, in order
   camera: null,        // the props the browser CameraScan sheet was handed
   toast: vi.fn(),
   nav: vi.fn(),
   confirmSheet: vi.fn(),
-  scanCode: vi.fn(),
   importCodeFromImage: vi.fn(),
 }))
 
@@ -57,13 +55,9 @@ vi.mock('../store/useUI.js', () => {
 })
 vi.mock('react-router-dom', () => ({ useNavigate: () => mocks.nav }))
 vi.mock('../sheets.jsx', () => ({ confirmSheet: (...a) => mocks.confirmSheet(...a) }))
-vi.mock('../lib/scan.js', () => ({
-  scanCode: (...a) => mocks.scanCode(...a),
-  importCodeFromImage: (...a) => mocks.importCodeFromImage(...a),
-}))
-vi.mock('../lib/mobile.js', () => ({ get MOBILE() { return mocks.MOBILE } }))
 // The browser camera sheet is a device surface; capture its props so a test can answer as the
 // camera would. It renders nothing.
+vi.mock('../lib/scan-web.js', () => ({ importCodeFromImageWeb: (...a) => mocks.importCodeFromImage(...a) }))
 vi.mock('../components/CameraScan.jsx', () => ({ default: props => { mocks.camera = props; return null } }))
 // lean-qr loads through a dynamic import and draws to a real canvas. The value it is asked to
 // draw is the part that matters here, so the stub simply reflects it back into the DOM.
@@ -79,12 +73,11 @@ let host, root, sheetHost, sheetRoot, camHost, camRoot, widthSpy
 
 beforeEach(() => {
   mocks.S = { gymCards: [], lastGymCardId: null }
-  mocks.MOBILE = false
   mocks.writes.length = 0
   mocks.sheets.length = 0
   mocks.camera = null
   mocks.toast.mockClear(); mocks.nav.mockClear(); mocks.confirmSheet.mockClear()
-  mocks.scanCode.mockReset(); mocks.importCodeFromImage.mockReset()
+  mocks.importCodeFromImage.mockReset()
   update.mockClear()
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
   sheetHost = document.createElement('div'); document.body.appendChild(sheetHost); sheetRoot = createRoot(sheetHost)
@@ -130,6 +123,11 @@ const openSheet = async () => {
 const sheetBtn = label => [...sheetHost.querySelectorAll('button')].find(b => b.textContent === label)
 const labelField = () => sheetHost.querySelector('input.field')
 const fileInput = () => sheetHost.querySelector('input[type="file"]')
+const scanFinds = async (code, button = 'Scan') => {
+  await tap(sheetBtn(button))
+  act(() => { camRoot.render(mocks.sheets.at(-1)(vi.fn())) })
+  await act(async () => { mocks.camera.onFound(code) })
+}
 const tap = async el => { await act(async () => { el.click(); await new Promise(r => setTimeout(r, 0)) }) }
 const typeInto = (el, value) => act(() => {
   Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set.call(el, value)
@@ -189,14 +187,12 @@ describe('CheckIn — the rail reopens where you left it', () => {
   })
 
   it('a profile saved before gym cards existed opens empty and can still be given one', async () => {
-    mocks.MOBILE = true
     mocks.S = {}                                    // no gymCards key at all
-    mocks.scanCode.mockResolvedValue({ value: 'FIRST-EVER', fmt: 'qrcode' })
     mount()
     expect(dots()).toHaveLength(0)
     await tap(host.querySelector('.ci-add'))
     await openSheet()
-    await tap(sheetBtn('Scan'))
+    await scanFinds({ value: 'FIRST-EVER', fmt: 'qrcode' })
     await tap(sheetBtn('Save card'))
     expect(mocks.S.gymCards).toHaveLength(1)
     expect(mocks.S.gymCards[0].value).toBe('FIRST-EVER')
@@ -329,11 +325,9 @@ describe('CheckIn — adding a card', () => {
   })
 
   it('a scanned code plus Save writes the card, points the memory at it, and pushes', async () => {
-    mocks.MOBILE = true
-    mocks.scanCode.mockResolvedValue({ value: 'MEMBER-9931', fmt: 'qrcode' })
     const { close } = await openAdd()
     typeInto(labelField(), 'FitZone downtown')
-    await tap(sheetBtn('Scan'))
+    await scanFinds({ value: 'MEMBER-9931', fmt: 'qrcode' })
     await tap(sheetBtn('Save card'))
 
     expect(mocks.S.gymCards).toHaveLength(1)
@@ -347,66 +341,35 @@ describe('CheckIn — adding a card', () => {
   })
 
   it('an unnamed card gets a name, and a code with stray whitespace is stored trimmed', async () => {
-    mocks.MOBILE = true
-    mocks.scanCode.mockResolvedValue({ value: '  MEMBER-9931  ', fmt: 'qrcode' })
     await openAdd()
     typeInto(labelField(), '   ')
-    await tap(sheetBtn('Scan'))
+    await scanFinds({ value: '  MEMBER-9931  ', fmt: 'qrcode' })
     await tap(sheetBtn('Save card'))
     expect(mocks.S.gymCards[0]).toMatchObject({ label: 'Gym card', value: 'MEMBER-9931' })
   })
 
   it('a second card is appended and takes over the memory', async () => {
-    mocks.MOBILE = true
     mocks.S = { gymCards: [card('a')], lastGymCardId: 'a' }
-    mocks.scanCode.mockResolvedValue({ value: 'SECOND', fmt: 'qrcode' })
     await openAdd()
-    await tap(sheetBtn('Scan'))
+    await scanFinds({ value: 'SECOND', fmt: 'qrcode' })
     await tap(sheetBtn('Save card'))
     expect(mocks.S.gymCards.map(c => c.value)).toEqual(['code-a', 'SECOND'])
     expect(mocks.S.lastGymCardId).toBe(mocks.S.gymCards[1].id)
   })
 
   it('a barcode we could read but could not redraw is refused, and never reaches the form', async () => {
-    mocks.MOBILE = true
-    mocks.scanCode.mockResolvedValue({ value: '5901234123457', fmt: 'EAN_13' })
     await openAdd()
-    await tap(sheetBtn('Scan'))
+    await scanFinds({ value: '5901234123457', fmt: 'EAN_13' })
     expect(mocks.toast).toHaveBeenCalledWith("That's not a QR code. Only QR cards can be shown here")
     expect(sheetBtn('Save card').disabled).toBe(true)
     expect(sheetHost.querySelector('[data-qr]')).toBeFalsy()
   })
 
-  it('backing out of the native scanner leaves the form as it was and re-enables the buttons', async () => {
-    mocks.MOBILE = true
-    mocks.scanCode.mockResolvedValue(null)
-    await openAdd()
-    typeInto(labelField(), 'FitZone')
-    await tap(sheetBtn('Scan'))
-    expect(mocks.toast).not.toHaveBeenCalled()
-    expect(labelField().value).toBe('FitZone')
-    expect(sheetBtn('Scan').disabled).toBe(false)     // busy was cleared
-    expect(sheetBtn('Save card').disabled).toBe(true)
-  })
 
-  it.each([
-    ['permission-denied', 'Camera permission is needed to scan. Enable it in Settings.'],
-    ['unsupported', 'Scanning is not available on this device.'],
-    ['ENOENT something else', 'Could not start the scanner'],
-  ])('a %s scanner failure is explained as something the user can act on', async (thrown, message) => {
-    mocks.MOBILE = true
-    mocks.scanCode.mockRejectedValue(new Error(thrown))
-    await openAdd()
-    await tap(sheetBtn('Scan'))
-    expect(mocks.toast).toHaveBeenCalledWith(message)
-    expect(sheetBtn('Scan').disabled).toBe(false)
-  })
 
-  it('in a browser the scan opens our own camera sheet instead of the native one', async () => {
-    mocks.MOBILE = false
+  it('the scan opens our own camera sheet', async () => {
     await openAdd()
     await tap(sheetBtn('Scan'))
-    expect(mocks.scanCode).not.toHaveBeenCalled()
     expect(mocks.sheets).toHaveLength(2)
 
     const closeCam = vi.fn()
@@ -420,7 +383,6 @@ describe('CheckIn — adding a card', () => {
   })
 
   it('the browser camera closes even when what it found cannot be used', async () => {
-    mocks.MOBILE = false
     await openAdd()
     await tap(sheetBtn('Scan'))
     const closeCam = vi.fn()
@@ -541,10 +503,8 @@ describe('CheckIn — editing a card', () => {
   })
 
   it('a re-scan replaces the code and keeps the name', async () => {
-    mocks.MOBILE = true
-    mocks.scanCode.mockResolvedValue({ value: 'RENEWED-2027', fmt: 'qrcode' })
     await openEdit('b')
-    await tap(sheetBtn('Re-scan'))
+    await scanFinds({ value: 'RENEWED-2027', fmt: 'qrcode' }, 'Re-scan')
     await tap(sheetBtn('Save card'))
     expect(mocks.S.gymCards[1]).toMatchObject({ id: 'b', label: 'B', value: 'RENEWED-2027' })
   })
@@ -557,10 +517,8 @@ describe('CheckIn — editing a card', () => {
   })
 
   it('a re-scan that is not a QR code cannot overwrite the working code already on the card', async () => {
-    mocks.MOBILE = true
-    mocks.scanCode.mockResolvedValue({ value: '5901234123457', fmt: 'EAN_13' })
     await openEdit('b')
-    await tap(sheetBtn('Re-scan'))
+    await scanFinds({ value: '5901234123457', fmt: 'EAN_13' }, 'Re-scan')
     await tap(sheetBtn('Save card'))
     expect(mocks.S.gymCards[1].value).toBe('code-b')
   })

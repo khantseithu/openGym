@@ -76,18 +76,6 @@ const swStamp = {
   }
 }
 
-// The phone flavour says so in its index.html. A web build that ran into the same dist/ between
-// the mobile build and `cap sync` (two builds in one worktree) shipped the web shell inside an
-// APK: no Android-only settings, a service worker, the passkey login. scripts/check-mobile-bundle.mjs
-// reads this tag in the synced copy after `cap sync` and fails the build without it.
-const flavor = {
-  name: 'opengym-flavor',
-  transformIndexHtml() {
-    if (process.env.VITE_MOBILE !== '1') return
-    return [{ tag: 'meta', attrs: { name: 'opengym-flavor', content: 'mobile' }, injectTo: 'head' }]
-  }
-}
-
 // The version people are asked for in #install-help and on every bug report. Read from
 // package.json so it cannot drift from the release it was built in, and inlined at build
 // time so no runtime fetch is involved.
@@ -102,12 +90,11 @@ const appVersion = process.env.APP_BUILD ? `${pkgVersion}+${process.env.APP_BUIL
 
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(appVersion) },
-  plugins: [react(), umami, flavor, swStamp, catalogueMedia],
+  plugins: [react(), umami, swStamp, catalogueMedia],
   base: './',
   server: {
-    // The Coach's core (payload, validator, prompts, HTTP adapters) lives in ../api/coach/core
-    // and is imported by the phone build. vite build and vitest already reach it; the dev
-    // server needs to be told the workspace is wider than frontend/.
+    // The frontend imports a few rules from ../api. vite build and vitest already reach them; the
+    // dev server needs to be told the workspace is wider than frontend/.
     fs: { allow: ['..'] },
     proxy: {
       '/api': { target: backend, changeOrigin: true, headers: { Origin: apiOrigin } },
@@ -116,8 +103,7 @@ export default defineConfig({
       } : {})
     }
   },
-  // The iOS app's deployment target is 15.5 (ios/App), so its WebView is Safari 15.5, and the web
-  // app follows the same floor. Vite's own default is Safari 16.4: syntax newer than 15.5 went out
+  // The web app supports Safari 15.5. Vite's own default is Safari 16.4: syntax newer than 15.5 went out
   // unlowered and one regex lookbehind kept 1.4.2 on its splash there. What the transpiler cannot
   // lower, scripts/check-bundle-syntax.mjs catches (its test builds the bundle).
   build: { chunkSizeWarningLimit: 1500, target: ['safari15', 'chrome100', 'firefox100', 'edge100'] },

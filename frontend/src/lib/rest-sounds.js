@@ -1,7 +1,5 @@
 // The end-of-rest sounds (Settings → Sound, #306) as data: what lib/sound.js chime() plays
-// through Web Audio, and what android/.../RestTone.java renders, number for number, for a locked
-// phone. Kept apart from lib/sound.js so the store, Settings and the native alarm (lib/rest-alert.js)
-// can read the choice without the audio code. See lib/sound.js chime() for how a sound is played.
+// through Web Audio. Kept apart from lib/sound.js so the store and Settings can read the choice without the audio code. See lib/sound.js chime() for how a sound is played.
 export const CHIME_PEAK = 0.9
 const CHIME = [[1319, 0.16, 0], [988, 0.16, 0.22], [1319, 0.5, 0.44]]
 const CLASSIC = [[880, 0.15, 0], [880, 0.15, 0.25], [1320, 0.4, 0.5]]

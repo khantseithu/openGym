@@ -9,26 +9,15 @@ import { accentValue, applyAccent } from './lib/accent.js'
 import { seasonAccent } from './lib/seasonal.js'
 import { setLang, useLang, baseLang } from './lib/i18n.js'
 import { effectiveLang } from './lib/default-lang.js'
-import { setPlayOnSilent, setVibrate, setAlarmBuzzer, setNativeBuzzer } from './lib/sound.js'
-import { buzzAsAlarm } from './lib/rest-alert.js'
-import { setNav, notePath, keyBefore, navToWorkout } from './lib/nav.js'
-import { onGymReminderOpen } from './lib/gym-reminder.js'
-import { workoutVolume } from './lib/history.js'
-import { setSystemBarsLight } from './lib/system-bars.js'
-import { initBackButton } from './lib/back.js'
+import { setPlayOnSilent, setVibrate } from './lib/sound.js'
+import { setNav, notePath, keyBefore } from './lib/nav.js'
 import { installEdgeSwipeBack, BACK_PREVIEW_EVENT } from './lib/edge-swipe-back.js'
 import { pageMotion } from './lib/page-motion.js'
-import { startWatchSync, bindWatchAppActions, patchSetIn } from './lib/watch-sync.js'
-import { stampWorkout } from './lib/sync-merge.js'
-import { logWeighIn } from './lib/bodyweight.js'
-import { startWidgetSync } from './lib/widgets.js'
-import { startLiveActivitySync } from './lib/live-activity.js'
 import { useWakeLock } from './lib/wakelock.js'
 import { installViewportGuard } from './lib/viewport-guard.js'
 import { installChipDrag } from './lib/hchips.js'
 import { syncPushSubscription } from './lib/push.js'
-import { MOBILE, nativePlatform } from './lib/mobile.js'
-import { exitWorkoutEdit, startFlow, beginWorkout } from './sheets.jsx'
+import { exitWorkoutEdit, startFlow } from './sheets.jsx'
 import Icon from './components/Icon.jsx'
 import TabBar from './components/TabBar.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
@@ -39,10 +28,7 @@ import RestTimer from './components/RestTimer.jsx'
 import TimerFlash from './components/TimerFlash.jsx'
 import { SeasonalLayer } from './components/Seasonal.jsx'
 import { openDeviceLinkRedeem } from './components/Passkeys.jsx'
-import { useAnimPacksBoot } from './components/Animations.jsx'
 import Login from './views/Login.jsx'
-import MobileOnboarding from './views/MobileOnboarding.jsx'
-import PermissionSteps from './views/PermissionSteps.jsx'
 import Home from './views/Home.jsx'
 import Plan from './views/Plan.jsx'
 import Workout from './views/Workout.jsx'
@@ -66,7 +52,6 @@ const Admin = lazyView(() => import('./views/Admin.jsx'))
 const CoachChat = lazyView(() => import('./views/CoachChat.jsx'))
 const Measurements = lazyView(() => import('./views/Measurements.jsx'))
 const CoachIntake = lazyView(() => import('./views/CoachIntake.jsx'))
-const CoachSetup = lazyView(() => import('./views/CoachSetup.jsx'))
 const StructuralBalance = lazyView(() => import('./views/StructuralBalance.jsx'))
 const ProgressPhotos = lazyView(() => import('./views/ProgressPhotos.jsx'))
 // The tabs and screens past Home (Stats, History, the Library, Settings, ...) as well: a start
@@ -103,7 +88,6 @@ function applyPrefs(theme, accent) {
   applyAccent(de, accent, de.dataset.theme)
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : '#000000'
-  if (MOBILE) setSystemBarsLight(de.dataset.theme === 'light')
 }
 
 function Shell() {
@@ -116,17 +100,9 @@ function Shell() {
   useEffect(() => { setPlayOnSilent(!!S.soundOnSilent) }, [S.soundOnSilent])
   // Settings → Vibrate, the same way: one page-level switch rather than a check at each buzz.
   useEffect(() => { setVibrate(S.vibrate !== false) }, [S.vibrate])
-  // Android app: "Vibrate when the phone is on silent" sends the end-of-rest buzz through the
-  // native side as an alarm (#375). buzzAsAlarm answers false off Android, so iOS buzzes as before.
-  useEffect(() => { setAlarmBuzzer(MOBILE && S.vibrate !== false && S.vibrateOnSilent ? buzzAsAlarm : null) }, [S.vibrate, S.vibrateOnSilent])
-  // iPhone app: the page cannot buzz (no navigator.vibrate), its native side can.
-  useEffect(() => { if (MOBILE) nativePlatform().then(p => { if (p === 'ios') setNativeBuzzer(buzzAsAlarm) }) }, [])
   // Store apps: which animation packs this device has, and the one the chosen quality wants for
   // the figure shown (components/Animations.jsx). Nothing on the web.
-  useAnimPacksBoot()
   const isGuest = useStore(s => s.isGuest())
-  const needsMobileOnboarding = useStore(s => s.needsMobileOnboarding)
-  const permSteps = useStore(s => s.permSteps)
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
   useEffect(() => { setNav(navigate) }, [navigate])
   const lastEditPath = useRef(loc.pathname)
@@ -178,7 +154,7 @@ function Shell() {
   // lib/push.js): a subscription the instance lost is back before the next reminder is due,
   // with nobody having to visit Settings. Web only — the APK has no service worker.
   useEffect(() => {
-    if (MOBILE || !user || !ready) return
+    if (!user || !ready) return
     syncPushSubscription().catch(() => {})
   }, [user?.id, ready])
   // Opened from a device-link QR code (#95): once boot knows who is here, the sheet that redeems
@@ -275,7 +251,7 @@ function Shell() {
   }, [inWorkout])
   // The chat owns the bottom of the screen as well: its composer sits where the tabs would be.
   // The first-launch card has no tabs either: they changed the route behind it.
-  const noTabs = inWorkout || loc.pathname === '/coach' || needsMobileOnboarding || permSteps
+  const noTabs = inWorkout || loc.pathname === '/coach' 
 
   const authed = user || isGuest
   // The boot screen in index.html covers the start; it goes once there is something to show.
@@ -288,7 +264,7 @@ function Shell() {
     </div>
   )
 
-  const view = l => (!authed ? <Login /> : needsMobileOnboarding ? <MobileOnboarding /> : permSteps ? <PermissionSteps /> : (
+  const view = l => (!authed ? <Login /> : (
     <Routes location={l}>
       <Route path="/home" element={<Home />} />
       {/* Gym check-in — switched off in Settings, the route falls through to the
@@ -312,12 +288,11 @@ function Shell() {
       <Route path="/coach" element={<CoachChat />} />
       <Route path="/coach/intake" element={<CoachIntake />} />
       <Route path="/coach/proposal" element={<Navigate to="/coach" replace />} />
-      <Route path="/coach/setup" element={<CoachSetup />} />
       <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
       <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>
   ))
-  const showPreview = !!preview && preview !== loc.pathname && authed && !needsMobileOnboarding && !permSteps
+  const showPreview = !!preview && preview !== loc.pathname && authed 
 
   return (
     <>
@@ -341,7 +316,7 @@ function Shell() {
       <TimerFlash />
       {/* Seasonal decoration (lib/seasonal.js): nothing, and nothing loaded, out of season. Never
           over a running workout or the first-launch screens. */}
-      {authed && !needsMobileOnboarding && !permSteps && <SeasonalLayer hidden={inWorkout || loc.pathname === '/workout'} />}
+      {authed && <SeasonalLayer hidden={inWorkout || loc.pathname === '/workout'} />}
     </>
   )
 }
@@ -378,52 +353,7 @@ export default function App() {
   const boot = useStore(s => s.boot)
   useEffect(() => { boot() }, [boot])
   useEffect(() => { prefetchViews() }, [])
-  // Android system back — sheet, then page, then press-again-to-exit (see lib/back.js)
-  useEffect(() => {
-    let stop = null, gone = false
-    initBackButton().then(fn => { if (gone) fn(); else stop = fn })
-    return () => { gone = true; stop?.() }
-  }, [])
   // iOS: swipe from the left edge for the page's own back button (lib/edge-swipe-back.js)
-  useEffect(() => installEdgeSwipeBack(), [])
-  // iPhone app with an Apple Watch: the running workout goes to the watch, its ticks come back
-  // (lib/watch-sync.js). Nothing at all on the web, on Android, or without a paired watch.
-  useEffect(() => {
-    if (!MOBILE) return
-    let stop = null, gone = false
-    startWatchSync({ useStore, useUI }).then(fn => { if (gone) fn(); else stop = fn })
-    // A session started on the watch starts here as the phone's Start does, with the watch's id
-    // and start time, and no weigh-in question (the lifter is at the watch, not here).
-    const unbind = bindWatchAppActions({
-      start: (ids, { bw = null, ...opts } = {}) => beginWorkout(ids, bw, opts),
-      // The watch's weigh-in: logged as the phone's check-in logs one (today's replaces today's).
-      weighIn: ({ w, at }) => useStore.getState().update(s => { logWeighIn(s, w, at) }),
-      // The watch removed its copies of deleted workouts from Apple Health: the phone's removal
-      // runs again, finds them gone and stops retrying them.
-      healthDeleted: () => { import('./lib/health-sync.js').then(m => m.syncHealth(useStore.getState().S)).catch(() => {}) },
-      patchSet: (where, fields, opts = {}) => useStore.getState().update(s => {
-        patchSetIn(s, where, fields, stampWorkout, { ...opts, recount: w => { w.vol = workoutVolume(w) } })
-      }),
-      // Ticks from the watch are the workout screen's to apply: it opens, and drains the queue.
-      openWorkout: () => { if (!String(window.location.hash || '').startsWith('#/workout')) navToWorkout() },
-    })
-    return () => { gone = true; stop?.(); unbind() }
-  }, [])
-  // iPhone app: the Home Screen widgets and the workout's Live Activity (lib/widgets.js,
-  // lib/live-activity.js). Nothing at all on the web or on Android.
-  useEffect(() => {
-    if (!MOBILE) return
-    const stops = [], gone = { v: false }
-    const keep = fn => { if (gone.v) fn(); else stops.push(fn) }
-    startWidgetSync({ useStore }).then(keep).catch(() => {})
-    startLiveActivitySync({ useStore, useUI }).then(keep).catch(() => {})
-    return () => { gone.v = true; stops.forEach(fn => fn()) }
-  }, [])
-  // Phone app: a tap on the gym reminder (lib/gym-reminder.js) opens the Start screen, or the
-  // workout already running. Nothing on the web.
-  useEffect(() => {
-    if (!MOBILE) return
-    return onGymReminderOpen(() => { if (!String(window.location.hash || '').startsWith('#/workout')) navToWorkout() })
-  }, [])
+  useEffect(() => installEdgeSwipeBack(), []);
   return <HashRouter><Shell /></HashRouter>
 }

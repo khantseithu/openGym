@@ -75,21 +75,26 @@ TZ=UTC npm --prefix frontend test
 git push -u origin upstream-sync     # check the preview, then merge into main
 ```
 
-This fork removed what the static deployment does not use, so a merge reports modify/delete conflicts when
-upstream changes those files. Keep them deleted, then commit and run the tests:
+This fork removed what the static deployment does not use, so a merge reports two kinds of conflict. Files upstream
+changed that are gone here are modify/delete conflicts: keep them deleted, then commit and run the tests:
 
 ```bash
 git status --short | awk '/^(DU|UD) /{print $2}' | xargs git rm -q
 ```
 
-Also delete any new upstream test that fails only because it reads a removed path. Never open a pull request
+The other kind is real code. The mobile build's branches were removed from about 50 source files, including
+`store/useStore.js`, `store/useUI.js`, `views/Settings.jsx`, `sheets.jsx` and `App.jsx`, so an upstream change near
+one of them conflicts line by line. Keep upstream's change and leave the native branch out. A new import of a removed
+module (`lib/mobile.js`, `lib/rest-alert.js`, `lib/watch-sync.js` and the like) goes too; the build fails on any you
+miss. Also delete any new upstream test that fails only because it reads a removed path. Never open a pull request
 against upstream by accident: `gh pr create` needs `--repo khantseithu/openGym`.
 
 Removed from this fork: `frontend/android`, `frontend/ios`, `helm`, `kubernetes`, `contrib`, `website`, `mcp`,
-GitHub and GitLab CI, Docker Compose, the API server (except `api/coach/core`, which the frontend build imports,
-and `api/sync-stamps.js`, which the sync tests compare against) and the tests that only checked those. To run the
-server or build the native apps, use upstream. `CLAUDE.md`, `README.md` and `docs/` are upstream's and still
-describe them.
+GitHub and GitLab CI, Docker Compose, the API server, the `VITE_MOBILE` build with its Capacitor packages and native
+bridges (`leaflet` went with the gym map), the phone-only Coach pipeline, and the tests that only checked those. What
+is left of `api/`: `api/coach/core` modules the frontend or its tests import, and `api/sync-stamps.js`, which the sync
+tests compare against. To run the server or build the native apps, use upstream. `CLAUDE.md`, `README.md` and `docs/`
+are upstream's and still describe them.
 
 ## Your data: limits of browser storage
 
@@ -130,9 +135,11 @@ If stored data is ever unreadable, the app starts empty and keeps the raw text i
 
 - Accounts, passkeys, sync across devices, device linking: each browser is its own separate copy
 - Web push: rest-timer and workout reminders when the app is closed. The rest timer itself works in the app
-- AI Coach (the server path; the phone-only path exists only in the native apps)
+- AI Coach (it needs a server; the phone-only path was removed with the native apps)
 - Admin dashboard, invites, activity log, server-side media sync
-- The MCP server and the native iPhone, Android and Watch apps (removed from this fork; upstream has them)
+- The MCP server and the native iPhone, Android and Watch apps, with what only they had: Apple Health and Health
+  Connect sync, the gym arrival reminder, app icons, automatic backup files, animation packs (removed from this fork;
+  upstream has them)
 
 Hevy API import remains optional: it runs only when you use it, and it talks directly to Hevy with your key.
 

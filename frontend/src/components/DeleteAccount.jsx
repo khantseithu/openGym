@@ -14,8 +14,6 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
 import { api } from '../lib/api.js'
-import { MOBILE } from '../lib/mobile.js'
-import { deviceLock, confirmDeviceOwner } from '../lib/device-auth.js'
 import { passwordError, ProveOwner } from './PasswordAuth.jsx'
 import { Row, Button } from './ui.jsx'
 
@@ -59,67 +57,40 @@ export function DeleteAccountSheet({ close, exportBackup, exportBackupZip, hasMe
   }
   // The phone app cannot hold a passkey for your server (its own origin is not the server's), so
   // there the password says it is you, or, with none, the pairing and the phone's own lock.
-  const passkey = !MOBILE && (proofs?.passkeys?.length || 0) > 0
+  const passkey = (proofs?.passkeys?.length || 0) > 0
   const password = !!proofs?.password
   // The server already knows the delete would be refused (the only admin, with others on the
   // server): said up front, so nobody types their name and answers a passkey prompt for nothing.
   const blocked = proofs?.deleteBlocked === 'last-admin' ? deleteAccountError({ data: { code: 'last-admin' } }) : null
-  return <>
-    <h3>{t('Delete your account?')}</h3>
-    <div className="muted small" style={{ marginBottom: 14, lineHeight: 1.5 }}>
-      {t('Your profile, workouts, body weight, photos and videos are deleted from this server for good. There is no undo, and not even your admin can bring them back.')}
-    </div>
-    {step === 'name' ? <>
-      <div className="small" style={{ marginBottom: 8 }}>{t('Want a copy first? Export a backup. You can import it into openGym anytime.')}</div>
-      {hasMedia && exportBackupZip
-        ? <Button icon="share" onClick={exportBackupZip}>{t('Export with photos & videos (.zip)')}</Button>
-        : <Button icon="share" onClick={exportBackup}>{t('Export backup (JSON)')}</Button>}
-      {blocked ? <div className="small" role="alert" style={errStyle}>{blocked}</div> : <form onSubmit={next} noValidate style={{ marginTop: 18 }}>
-        <label className="small" htmlFor="delete-account-name" style={{ display: 'block', marginBottom: 6 }}>{t('Type {0} to confirm.', name)}</label>
-        <input ref={ref} id="delete-account-name" className="input" placeholder={t('Account name')} autoComplete="off"
-          autoCapitalize="none" autoCorrect="off" spellCheck={false} value={typed} onChange={e => setTyped(e.target.value)} />
-        <div style={{ height: 14 }} />
-        <button type="submit" className="btn danger" disabled={!match}>{t('Continue')}</button>
-      </form>}
-      <div style={{ height: 8 }} />
-      <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
-    </> : <>
-      <div className="dim small" style={{ marginBottom: 14 }}>{t('First confirm that it is you.')}</div>
-      {!proofs ? (err ? <div className="small" role="alert" style={errStyle}>{err}</div> : <div className="dim small">{t('Loading…')}</div>)
-        : MOBILE && !password ? <DeviceConfirm onConfirmed={() => remove({})} />
-        : <ProveOwner passkey={passkey} password={password} explain={deleteAccountError} danger submitText={t('Delete forever')} onProof={remove} />}
-      <div style={{ height: 8 }} />
-      <Button type="button" variant="ghost" className="dim" onClick={() => setStep('name')}>{t('Back')}</Button>
-    </>}
-  </>
-}
-
-/* A paired phone, for a profile without a password: the phone's screen lock (Face ID, Touch ID,
-   a fingerprint or the passcode) is asked, and only once it says yes does the delete go out.
-   Backed out or failed, nothing is sent and the sheet stays. A phone with no screen lock at all
-   has nothing to ask: the typed name is the only check, and the sheet says so. */
-function DeviceConfirm({ onConfirmed }) {
-  const [lock, setLock] = useState(null)   // 'set' | 'none' | 'unknown'
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState(null)
-  useEffect(() => { deviceLock().then(setLock) }, [])
-  const go = async () => {
-    if (busy) return
-    setBusy(true); setErr(null)
-    try {
-      const r = await confirmDeviceOwner(t('Confirm it’s you to delete your openGym account'))
-      if (r !== 'ok' && r !== 'none') { setErr(t('Not confirmed on this phone. Nothing was deleted.')); return }
-      await onConfirmed()
-    } catch (e) { setErr(deleteAccountError(e)) }
-    finally { setBusy(false) }
-  }
-  return <>
-    <div className="dim small" style={{ marginBottom: 14 }}>{lock === 'none'
-      ? t('This phone has no screen lock, so the name you typed is the only check.')
-      : t('Your phone checks that it’s you (face, fingerprint or passcode), then the account is deleted.')}</div>
-    <button type="button" className="btn danger" disabled={busy || !lock} onClick={go}>{t('Delete forever')}</button>
-    {err && <div className="small" role="alert" style={errStyle}>{err}</div>}
-  </>
+  return (
+    <>
+      <h3>{t('Delete your account?')}</h3>
+      <div className="muted small" style={{ marginBottom: 14, lineHeight: 1.5 }}>
+        {t('Your profile, workouts, body weight, photos and videos are deleted from this server for good. There is no undo, and not even your admin can bring them back.')}
+      </div>
+      {step === 'name' ? <>
+        <div className="small" style={{ marginBottom: 8 }}>{t('Want a copy first? Export a backup. You can import it into openGym anytime.')}</div>
+        {hasMedia && exportBackupZip
+          ? <Button icon="share" onClick={exportBackupZip}>{t('Export with photos & videos (.zip)')}</Button>
+          : <Button icon="share" onClick={exportBackup}>{t('Export backup (JSON)')}</Button>}
+        {blocked ? <div className="small" role="alert" style={errStyle}>{blocked}</div> : <form onSubmit={next} noValidate style={{ marginTop: 18 }}>
+          <label className="small" htmlFor="delete-account-name" style={{ display: 'block', marginBottom: 6 }}>{t('Type {0} to confirm.', name)}</label>
+          <input ref={ref} id="delete-account-name" className="input" placeholder={t('Account name')} autoComplete="off"
+            autoCapitalize="none" autoCorrect="off" spellCheck={false} value={typed} onChange={e => setTyped(e.target.value)} />
+          <div style={{ height: 14 }} />
+          <button type="submit" className="btn danger" disabled={!match}>{t('Continue')}</button>
+        </form>}
+        <div style={{ height: 8 }} />
+        <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+      </> : <>
+        <div className="dim small" style={{ marginBottom: 14 }}>{t('First confirm that it is you.')}</div>
+        {!proofs ? (err ? <div className="small" role="alert" style={errStyle}>{err}</div> : <div className="dim small">{t('Loading…')}</div>)
+          : <ProveOwner passkey={passkey} password={password} explain={deleteAccountError} danger submitText={t('Delete forever')} onProof={remove} />}
+        <div style={{ height: 8 }} />
+        <Button type="button" variant="ghost" className="dim" onClick={() => setStep('name')}>{t('Back')}</Button>
+      </>}
+    </>
+  );
 }
 
 // The row on the Account page. `done` runs once the account is gone (Settings goes home).

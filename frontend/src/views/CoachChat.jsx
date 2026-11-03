@@ -22,14 +22,9 @@ import { fmtDate, fmtNum, DAYS, weekOrder, weekStartOf, isoOf } from '../lib/for
 import { exLine } from '../lib/history.js'
 import { speedUnitOf } from '../lib/speed.js'
 import { DEMO } from '../lib/demo.js'
-import { MOBILE } from '../lib/mobile.js'
 import { scheduleModeOf } from '../lib/rotation.js'
 import ChatInput from '../components/ChatInput.jsx'
-import {
-  coachAvailable, hasConsent, emptyCoach, appendChat, recordTiming, estimateMs, profileLines,
-  markStale, applicable, applyChangeSet, applyCreatedPlan, recordDismissal, recordDebrief, logEntry,
-  changeTitle, changeValues, exName, canRevert, revertLast
-} from '../lib/coach.js'
+import { hasConsent, emptyCoach, appendChat, recordTiming, estimateMs, profileLines, markStale, applicable, applyChangeSet, applyCreatedPlan, recordDismissal, recordDebrief, logEntry, changeTitle, changeValues, exName, canRevert, revertLast } from '../lib/coach.js'
 import { insightsFor, sessionInsights } from '../lib/coach-insights.js'
 import { useCoachStatus, requestReview, requestDebrief, requestPlan, refinePlan, askCoach, resolvePending, cohortStats, setCohortShare, jobErrorText, awaitedJob, settleAwaited, JOB_ERRORS, ensureAiConsent, isDeclined } from '../lib/coach-api.js'
 import { AiConsentSection } from '../components/CoachConsentSheet.jsx'
@@ -46,7 +41,6 @@ export default function CoachChat() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
-  const coachLocal = useStore(s => s.coachLocal)
   const update = useStore(s => s.update)
   const storeReady = useStore(s => s.ready)
   const toast = useUI(s => s.toast)
@@ -58,7 +52,6 @@ export default function CoachChat() {
   const [busy, setBusy] = useState(false)
   const endRef = useRef(null)
   const prevJob = useRef(null)
-  const coachMode = coachLocal?.mode
 
   const gate = useCoachGate()
   const ok = gate.ok
@@ -121,7 +114,7 @@ export default function CoachChat() {
 
   if (!ready) return null
   const coach = S.coach || emptyCoach()
-  const community = !!config?.coach?.community && !DEMO && !(MOBILE && coachMode === 'byok')
+  const community = !!config?.coach?.community && !DEMO
 
   const send = async () => {
     const msg = text.trim()
@@ -229,7 +222,7 @@ export default function CoachChat() {
 
       {(coach.chat || []).map(m => <Message key={m.id} m={m} S={S} profile={coach.profile} openSheet={openSheet} />)}
 
-      {job && <Typing S={S} kind={job.kind} coachLocal={coachLocal} config={config} />}
+      {job && <Typing S={S} kind={job.kind} config={config} />}
 
       {pending && !job && pending.kind !== 'ask' && (pending.kind === 'create'
         ? <PlanCard p={pending} S={S} update={update} toast={toast} nav={nav} refresh={refresh} />
@@ -296,11 +289,10 @@ const stamp = at => {
   return d.toDateString() === today.toDateString() ? time : fmtDate(isoOf(d)) + ' · ' + time
 }
 
-function Typing({ S, kind, coachLocal, config }) {
+function Typing({ S, kind, config }) {
   const ms = estimateMs(S)
-  // "Local" on either side: the phone's own OpenAI-compatible endpoint, or the server's —
   // /api/config names the provider, and a model on the owner's box is nothing like a cloud API.
-  const local = (coachLocal?.mode === 'byok' && coachLocal?.provider === 'compatible') || config?.coach?.provider === 'compatible'
+  const local = config?.coach?.provider === 'compatible'
   let eta
   if (ms) {
     const min = Math.round(ms / 60000)
@@ -781,9 +773,6 @@ function CadenceSheet({ update }) {
   const coach = useStore(s => s.S.coach) || emptyCoach()
   const cadence = coach.cadence && coach.cadence !== 'off' ? coach.cadence : null
   const mode = !cadence ? 'off' : cadence.weekly ? 'weekly' : 'every'
-  // A phone with its own key runs them itself, and only while the app is open (lib/coach-schedule.js).
-  const deviceMode = useStore(s => s.coachLocal?.mode)
-  const onPhone = MOBILE && deviceMode === 'byok'
   // Automatic reviews send your training while nobody is looking, so switching them on is where
   // the data-sharing question is asked for them. "Not now" leaves them off.
   const setMode = async m => {
@@ -798,8 +787,7 @@ function CadenceSheet({ update }) {
   const patch = fn => update(s => { const c = (s.coach = s.coach || emptyCoach()); fn(c) })
   return <>
     <h3>{t('Automatic reviews')}</h3>
-    <Section footer={mode === 'off' ? t('Off. The Coach only looks when you ask.') : t('You are only notified when the Coach actually has something to suggest.')
-      + (onPhone ? ' ' + t('On this phone the Coach can only look while the app is open: right after a workout, or the next time you open it.') : '')}>
+    <Section footer={mode === 'off' ? t('Off. The Coach only looks when you ask.') : t('You are only notified when the Coach actually has something to suggest.')}>
       <SelectRow icon="clock" iconTint="var(--purple)" title={t('When')} value={mode} onChange={setMode}
         options={[
           { value: 'off', label: t('Off') },

@@ -10,7 +10,7 @@ import { bindUI } from '../components/ui.jsx'
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 const mocks = vi.hoisted(() => {
-  const state = { S: null, MOBILE: false, user: null }
+  const state = { S: null, user: null }
   state.snapshot = () => ({
     S: state.S,
     user: state.user,
@@ -41,8 +41,6 @@ vi.mock('../lib/api.js', () => ({
 }))
 vi.mock('../lib/push.js', () => ({ pushSupported: () => false, enablePush: vi.fn(), disablePush: vi.fn(), sendTestPush: vi.fn() }))
 vi.mock('../lib/wakelock.js', () => ({ wakeLockSupported: () => false }))
-vi.mock('../lib/mobile.js', () => ({ get MOBILE() { return mocks.MOBILE }, isAndroid: () => Promise.resolve(false), shareExport: vi.fn(), syncReminder: vi.fn() }))
-vi.mock('./MobileOnboarding.jsx', () => ({ ConnectSheet: () => null }))
 vi.mock('../sheets.jsx', () => ({
   loadStarterPlan: vi.fn(), starterPlanSheet: vi.fn(), confirmSheet: vi.fn(), importFromApp: vi.fn(),
   importFromHevy: vi.fn(), equipmentProfileSheet: vi.fn(),
@@ -62,7 +60,6 @@ beforeEach(() => {
     unit: 'kg', restSec: 90, restPauseSec: 15, sound: false, effort: 'none',
     gifSize: 'full', workouts: [], routines: [], exWeights: {},
   }
-  mocks.MOBILE = false
   mocks.user = null
   host = document.createElement('div')
   document.body.appendChild(host)
@@ -77,8 +74,7 @@ const mount = () => act(() => root.render(<Settings page="look" />))
 const row = () => [...host.querySelectorAll('.lrow')].find(r => r.textContent.includes('Show connection status'))
 
 describe('Show connection status', () => {
-  it('is there with no account, on a phone kept local, and on by default', () => {
-    mocks.MOBILE = true
+  it('is there with no account, and on by default', () => {
     mount()
     expect(row()).toBeTruthy()
     expect(row().textContent).toContain('A dot on Home still warns when syncing is stuck.')

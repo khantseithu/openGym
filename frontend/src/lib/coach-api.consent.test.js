@@ -6,23 +6,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  DEMO: false, MOBILE: false, coachLocal: null,
+  DEMO: false, coachLocal: null,
   disclosure: { provider: 'openai', providerLabel: 'OpenAI API', host: 'api.openai.com', categories: [], version: 1 },
   answer: true,
 }))
 vi.mock('./demo.js', () => ({ get DEMO() { return mocks.DEMO }, DEMO_SEEDED: 'gym_demo_seeded_v1', REPO: '' }))
-vi.mock('./mobile.js', () => ({ get MOBILE() { return mocks.MOBILE }, readJsonFile: async () => null, writeJsonFile: async () => {} }))
 vi.mock('./api.js', () => ({
   api: vi.fn(async path => (path === '/api/coach/disclosure' ? mocks.disclosure : { job: { id: 'j1' } })),
 }))
 vi.mock('../store/useStore.js', () => ({ useStore: { getState: () => ({ S: { coach: {} }, coachLocal: mocks.coachLocal }) } }))
 vi.mock('../store/useUI.js', () => ({ useUI: { getState: () => ({ toast: vi.fn() }) } }))
 vi.mock('../components/CoachConsentSheet.jsx', () => ({ askAiConsent: vi.fn(async () => mocks.answer) }))
-vi.mock('./coach-local.js', () => ({
-  setNotifier: vi.fn(),
-  localDisclosure: vi.fn(async () => mocks.disclosure),
-  localReview: vi.fn(async () => ({ job: { id: 'local-1' } })),
-}))
 vi.mock('./coach-demo.js', () => ({
   demoDisclosure: vi.fn(() => ({ provider: 'demo' })),
   demoReview: vi.fn(async () => ({ job: { id: 'demo-1' } })),
@@ -30,7 +24,6 @@ vi.mock('./coach-demo.js', () => ({
 
 const { api } = await import('./api.js')
 const { askAiConsent } = await import('../components/CoachConsentSheet.jsx')
-const local = await import('./coach-local.js')
 const demo = await import('./coach-demo.js')
 const { requestReview, requestPlan, refinePlan, requestDebrief, isDeclined } = await import('./coach-api.js')
 const { aiConsents, withdrawAi, _resetAiConsent } = await import('./coach-consent.js')
@@ -42,7 +35,7 @@ beforeEach(() => {
   localStorage.clear()
   _resetAiConsent()
   Object.assign(mocks, {
-    DEMO: false, MOBILE: false, coachLocal: null, answer: true,
+    DEMO: false, coachLocal: null, answer: true,
     disclosure: { provider: 'openai', providerLabel: 'OpenAI API', host: 'api.openai.com', categories: [], version: 1 },
   })
 })
@@ -110,26 +103,6 @@ describe('the server Coach', () => {
     vi.mocked(api).mockRejectedValueOnce(Object.assign(new Error('offline'), { status: 0 }))
     await expect(requestReview('')).rejects.toThrow('offline')
     expect(jobCalls()).toHaveLength(0)
-  })
-})
-
-describe('the phone with its own key', () => {
-  beforeEach(() => { mocks.MOBILE = true; mocks.coachLocal = { mode: 'byok', provider: 'openai' } })
-
-  it('asks with the device wording, and a yes for the server is not a yes for the phone', async () => {
-    mocks.coachLocal = null
-    await requestReview('')                       // the server's OpenAI
-    mocks.coachLocal = { mode: 'byok', provider: 'openai' }
-    await requestReview('')                       // the phone's own OpenAI key
-    expect(askAiConsent).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(askAiConsent).mock.calls[1][0]).toMatchObject({ via: 'device', name: 'OpenAI' })
-    expect(local.localReview).toHaveBeenCalledTimes(1)
-  })
-
-  it('"Not now" never reaches the pipeline', async () => {
-    mocks.answer = false
-    await expect(requestReview('')).rejects.toMatchObject({ code: 'declined' })
-    expect(local.localReview).not.toHaveBeenCalled()
   })
 })
 

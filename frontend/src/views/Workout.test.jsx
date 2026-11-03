@@ -8,7 +8,6 @@ import { nextPrescription } from '../lib/progression.js'
 import { buildCombinedEntries } from '../lib/session-merge.js'
 import { buildCompletedWorkout } from '../lib/finish-workout.js'
 import { isWarmupRow } from '../lib/workout-model.js'
-import { discardedFor } from '../lib/watch-sync.js'
 import { finishWorkout, finishWorkoutSheet } from '../sheets.jsx'
 
 // A menu's actions in order, whether it came as one list or in groups (menuSheet `sections`).
@@ -87,8 +86,6 @@ vi.mock('../store/useUI.js', () => {
   return { useUI }
 })
 vi.mock('react-router-dom', () => ({ useNavigate: () => mocks.nav }))
-// The Live Activity's Done (lib/live-activity.js): the handler the workout screen binds.
-vi.mock('../lib/live-activity.js', () => ({ bindLiveActions: h => { mocks.live = h; return () => { if (mocks.live === h) mocks.live = null } } }))
 vi.mock('../sheets.jsx', () => ({
   startFlow: vi.fn(),
   exercisePicker: mocks.exercisePicker,
@@ -904,9 +901,7 @@ describe('Workout discard timer lifecycle', () => {
     const wid = mocks.S.active.id
     expect(wid).toBeTruthy()
     await requestDiscard()
-    expect(discardedFor()).not.toContain(wid)
     await act(async () => { mocks.confirmSheet.mock.calls[0][0].onConfirm() })
-    expect(discardedFor()).toContain(wid)
     vi.unstubAllGlobals()
   })
 })
@@ -3671,47 +3666,5 @@ describe('the workout screen chrome (v1.3.11)', () => {
     await unmount()
     await mount([exercise('plain-bench', [false])], 0, { gifSize: 'mini', active: { workoutView: 'compact' } })
     expect(container.querySelector('.wthumb')).toBeNull()
-  })
-})
-
-describe('the Lock Screen\'s Done (Live Activity)', () => {
-  it('ticks the set through the same toggle, with the tap\'s time, and the rest counts from the tap', async () => {
-    mocks.startRest.mockImplementation(sec => { mocks.timer = { left: sec, total: sec, endsAt: Date.now() + sec * 1000 } })
-    await mount([exercise('live-bench', [false, false])])
-    expect(mocks.live).toBeTruthy()
-    const at = Date.now() - 30000
-    await act(async () => { mocks.live.setDone(0, 0, { at }) })
-    const set = mocks.S.active.entries[0].sets[0]
-    expect(set.done).toBe(true)
-    expect(set.at).toBe(at)
-    expect(mocks.startRest).toHaveBeenCalledTimes(1)
-    // 30 s of it already went by on the Lock Screen
-    expect(mocks.addRest).toHaveBeenCalledTimes(1)
-    expect(mocks.addRest.mock.calls[0][0]).toBeLessThanOrEqual(-29)
-    mocks.startRest.mockReset()
-  })
-
-  it('leaves a set already ticked alone, and a saved workout being edited', async () => {
-    await mount([exercise('live-bench', [true, false])])
-    await act(async () => { mocks.live.setDone(0, 0, { at: Date.now() }) })
-    expect(mocks.S.active.entries[0].sets[0].done).toBe(true)
-    expect(mocks.startRest).not.toHaveBeenCalled()
-    await unmount()
-    await mount([exercise('live-bench', [false])], 0, { active: { editingWorkoutId: 'w1' } })
-    await act(async () => { mocks.live.setDone(0, 0, { at: Date.now() }) })
-    expect(mocks.S.active.entries[0].sets[0].done).toBe(false)
-  })
-
-  it('Next exercise moves the current exercise without ticking, Skip rest stops the rest', async () => {
-    await mount([exercise('live-bench', [false, false]), exercise('live-row', [false])])
-    await act(async () => { mocks.live.next(1) })
-    expect(mocks.S.active.cur).toBe(1)
-    expect(mocks.S.active.entries.flatMap(e => e.sets).some(s => s.done)).toBe(false)
-    mocks.timer = { left: 60, total: 90, endsAt: Date.now() + 60000 }
-    expect(mocks.live.timer()).toBe(mocks.timer)
-    const before = mocks.stopRest.mock.calls.length
-    await act(async () => { mocks.live.restSkip() })
-    expect(mocks.stopRest.mock.calls.length).toBe(before + 1)
-    expect(mocks.timer).toBeNull()
   })
 })

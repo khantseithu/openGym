@@ -5,11 +5,8 @@ import { restSoundOf } from '../lib/rest-sounds.js'
 import { api } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
 import { deviceId } from '../lib/push.js'
-import { MOBILE } from '../lib/mobile.js'
-import { armRestAlert, bindNativeRest, disarmRestAlert, holdRestAlert, toneNative } from '../lib/rest-alert.js'
 import { useStore } from './useStore.js'
 import { REST_MAX } from '../lib/duration.js'
-import { accentValue } from '../lib/accent.js'
 
 // Fire-and-forget: lets the server push a "rest over" alert if this tab gets suspended
 // before the local timer completes. No-ops for guests / offline. The device id keeps the
@@ -25,14 +22,7 @@ const cancelPushRestTimer = () => { if (useStore.getState().user) api('/api/push
 // it is ten seconds between the two sides of a hold, and the app is in your hand.
 const bookRestEnd = (endsAt, totalSec, kind) => {
   const switching = kind === 'switch'
-  if (!MOBILE) { if (!switching) pushRestTimer(Math.max(1, Math.round((endsAt - Date.now()) / 1000))); return }
-  const { S } = useStore.getState()
-  armRestAlert(endsAt, { title: switching ? t('Switch sides') : t('Rest’s over. Next set!'), countdownTitle: switching ? t('Switch sides') : t('Rest'), totalSec, accent: accentValue(S), sound: !!S.sound, classic: restSoundOf(S) === 'classic', tone: restSoundOf(S), vibrate: S.vibrate !== false, alarmBuzz: S.vibrate !== false && !!S.vibrateOnSilent })
-    .then(ok => {
-      // Only for the rest that asked: one skipped or moved since then has booked its own end.
-      const tm = useUI.getState().timer
-      if (!ok && !switching && tm && !tm.paused && !tm.ready && tm.endsAt === endsAt) pushRestTimer(Math.max(1, Math.round((endsAt - Date.now()) / 1000)))
-    })
+  if (!switching) pushRestTimer(Math.max(1, Math.round((endsAt - Date.now()) / 1000))); return
 }
 
 const notificationsSupported = () => typeof window !== 'undefined' && 'Notification' in window
@@ -195,7 +185,7 @@ const runRest = (set, get) => {
       // The native alarm is left armed: this tick can come a little early, and with the screen
       // locked it never runs at all.
       get().toast(t('Rest’s over. Next set!'))
-      if (!MOBILE) maybeRestNotification()
+      maybeRestNotification()
       cancelPushRestTimer()
       stopRestTicking()
       set({ timer: { ...tm, left: 0, ready: true } })
@@ -212,8 +202,7 @@ const runRest = (set, get) => {
 // ducks for it; anywhere else, or if that fails, the page's own chime.
 function endTone(enabled, kind) {
   if (!enabled) return
-  if (!MOBILE) { chime(enabled, kind); return }
-  toneNative(kind === true ? 'classic' : kind).then(ok => { if (!ok) chime(enabled, kind) })
+  chime(enabled, kind); return
 }
 
 export const useUI = create((set, get) => ({
@@ -316,7 +305,6 @@ export const useUI = create((set, get) => ({
     stopRestTicking()
     cancelPushRestTimer()
     const left = Math.max(1, Math.round((tm.endsAt - Date.now()) / 1000))
-    holdRestAlert(left, tm.total)
     set({ timer: { ...tm, left, paused: true } })
   },
   // Carrying on from where the pause held it: the end moves out by however long the pause was,
@@ -347,7 +335,7 @@ export const useUI = create((set, get) => ({
     const total = Math.max(tm.total || left, left)
     // Paused, there is no end to move and nothing booked on the server: the time is simply held,
     // and the notification holds the new figure.
-    if (tm.paused) { set({ timer: { ...tm, left, total } }); holdRestAlert(left, total); return }
+    if (tm.paused) { set({ timer: { ...tm, left, total } }); return }
     const endsAt = tm.endsAt + sec * 1000
     set({ timer: { ...tm, left, total, endsAt } })
     bookRestEnd(endsAt, total, tm.kind)
@@ -359,31 +347,10 @@ export const useUI = create((set, get) => ({
     if (!tm || !(tm.forIdx >= at)) return
     set({ timer: { ...tm, forIdx: tm.forIdx + delta } })
   },
-  // Android: the rest notification's own Pause, −15 s and +15 s (#296) change the countdown there
-  // first, and this brings the bar in the app to the same place — a pause stops the ticking here
-  // too, a resume starts it again from the notification's end, and +15 s on a rest the app had
-  // already called Ready opens it again. Nothing is sent back: the notification already shows it.
-  followNativeRest({ endsAt, left, total, paused }) {
-    const tm = get().timer
-    const forIdx = tm?.forIdx
-    const kind = { ...(tm?.kind === 'switch' ? { kind: 'switch' } : {}), ...(tm?.forSet != null ? { forSet: tm.forSet } : {}) }
-    if (paused) {
-      stopRestTicking()
-      set({ timer: { left, total, endsAt, forIdx, ...kind, paused: true } })
-      return
-    }
-    const ticking = !!timerInt && !!tm && !tm.paused && !tm.ready
-    set({ timer: { left, total, endsAt, forIdx, ...kind } })
-    if (ticking) return
-    // As in resumeRest: a hide from while it was held or over is no catch-up of this countdown.
-    pageHiddenAt = document.hidden ? Date.now() : null
-    runRest(set, get)
-  },
   stopRest() {
     stopRestTicking()
     // Skip, Dismiss, a rest replacing this one and "rest off" all take the native alarm and
     // its notifications down with it, or the alert fires after the user already moved on.
-    disarmRestAlert()
     if (get().timer) cancelPushRestTimer()
     set({ timer: null })
   },
@@ -494,12 +461,10 @@ export function restoreRest(now = Date.now()) {
   const base = { total, forIdx: saved.forIdx ?? undefined, ...(saved.forSet != null ? { forSet: saved.forSet } : {}), ...(saved.kind === 'switch' ? { kind: 'switch' } : {}) }
   if (saved.paused) {
     useUI.setState({ timer: { ...base, left: Math.round(saved.left), endsAt: saved.endsAt, paused: true } })
-    if (MOBILE) holdRestAlert(Math.round(saved.left), total)
     return true
   }
   pageHiddenAt = typeof document !== 'undefined' && document.hidden ? now : null
   useUI.setState({ timer: { ...base, left: Math.max(1, Math.round((saved.endsAt - now) / 1000)), endsAt: saved.endsAt } })
-  if (MOBILE) bookRestEnd(saved.endsAt, total, base.kind)
   runRest(useUI.setState, useUI.getState)
   return true
 }
@@ -546,14 +511,3 @@ export function restoreWork(now = Date.now()) {
 useUI.subscribe((s, prev) => { if (s.work !== prev.work && (!s.work || !prev.work || s.work.owner !== prev.work.owner || s.work.endsAt !== prev.work.endsAt || s.work.alerted !== prev.work.alerted)) saveWork(s.work) })
 restoreWork()
 
-// Buttons on the rest notification (pause, ±15s, skip) change the countdown in the
-// service first, then mirror that into the in-app timer. skip ends it. Seconds round up, as the
-// notification's clock does, so a pause in the last half second still holds a second here.
-bindNativeRest(ev => {
-  if (!ev) return
-  if (ev.type === 'skip') { useUI.getState().stopRest(); return }
-  const left = Math.ceil((ev.leftMs || 0) / 1000)
-  if (!(left > 0)) return
-  const total = Math.max(left, Math.round((ev.totalMs || 0) / 1000))
-  useUI.getState().followNativeRest({ endsAt: ev.endsAt, left, total, paused: !!ev.paused })
-})

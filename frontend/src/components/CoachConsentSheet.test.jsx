@@ -30,7 +30,6 @@ vi.mock('../store/useStore.js', () => {
   useStore.getState = snap
   return { useStore }
 })
-vi.mock('../lib/mobile.js', () => ({ MOBILE: false, readJsonFile: async () => null, writeJsonFile: async () => {} }))
 vi.mock('../coach.css', () => ({}))
 
 const { useUI } = await import('../store/useUI.js')

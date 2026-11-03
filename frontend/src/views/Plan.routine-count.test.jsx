@@ -27,7 +27,6 @@ vi.mock('../store/useStore.js', () => {
   return { useStore, DEF: { reminder: { time: '17:30' } }, hasData: () => false }
 })
 vi.mock('react-router-dom', () => ({ useNavigate: () => () => {} }))
-vi.mock('../lib/mobile.js', () => ({ MOBILE: false, isAndroid: () => Promise.resolve(false), shareExport: vi.fn(), syncReminder: vi.fn() }))
 vi.mock('../sheets.jsx', () => ({
   starterPlanSheet: vi.fn(), dayAssignSheet: vi.fn(),
 }))

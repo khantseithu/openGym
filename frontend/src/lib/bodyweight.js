@@ -40,7 +40,7 @@ export function weighInAt(b) {
 /**
  * A weigh-in logged into the profile's list, the way the check-in before a workout does it: on the
  * day it was made, replacing that day's (a second weigh-in the same day is a correction), sorted.
- * Used for the Apple Watch's weigh-in (lib/watch-sync.js). `at` is when it was made (ms).
+ * `at` is when it was made (ms).
  */
 export function logWeighIn(s, w, at = Date.now()) {
   const n = Math.round(Number(w) * 10) / 10

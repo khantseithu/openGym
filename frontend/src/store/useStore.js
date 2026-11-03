@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { api, setRemoteAuth } from '../lib/api.js'
+import { api } from '../lib/api.js'
 import { localTZ } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { registerCustom, healCustomEx } from '../lib/exercises.js'
@@ -7,8 +7,6 @@ import { DEMO, DEMO_SEEDED, STATIC } from '../lib/demo.js'
 import { rememberDefaultLang } from '../lib/default-lang.js'
 import { guestAllowed } from '../lib/guest.js'
 import { stateJson } from '../lib/state-json.js'
-import { MOBILE, initReminderSync, nativeLoad, nativeSave, onAppActive, readJsonFile, syncReminder, writeAutoBackup, writeJsonFile } from '../lib/mobile.js'
-import { initHealthSync, syncHealth, readHealth } from '../lib/health-sync.js'
 import { refillIfComplete } from '../lib/rotation.js'
 import { liftLegacy } from '../lib/sync-legacy.js'
 import { mergeStates, localExtras, stampChange, highestStamp, stampRestore, stampReplace, inUnitOf, keepReset, resetIdsOf, mergeResetIds, entryKey } from '../lib/sync-merge.js'
@@ -20,10 +18,6 @@ import { countChanges, syncFingerprint } from '../lib/sync-changes.js'
 import { saveWorkoutEdit, deleteEditedWorkout } from '../lib/session-edit.js'
 import { appBase } from '../lib/app-base.js'
 import { linkTokenFromSearch, stripLinkFromUrl } from '../lib/device-link.js'
-import { loadRemote, chooseLocal, forgetRemote, connect, normalizeServerUrl, renewToken } from '../lib/remote.js'
-import { loadCfAccess } from '../lib/cf-access.js'
-import { loadCoachDevice, saveCoachDevice, coachDeviceSettings } from '../lib/coach-device.js'
-import { initCoachSchedule } from '../lib/coach-schedule.js'
 import { RTL_LANGS } from '../lib/i18n-core.js'
 import { DEFAULT_TEMPLATE_ID } from '../lib/structuralBalanceTemplates.js'
 
@@ -53,7 +47,6 @@ const SYNCED_FP_KEY = 'gym_synced_fp'  // a fingerprint of that copy (lib/sync-c
 // Changes a forced sign-out or disconnect kept on this device, by server and account, until it
 // reaches that server as that account again. On a phone also a file beside the state mirror.
 const STASH_KEY = 'gym_stash'
-const STASH_FILE = 'opengym-stash.json'
 // A browser sign-out whose request never reached the server. The session cookie is HttpOnly, so
 // only the server's answer to /api/logout takes it out of the browser; until that answer comes,
 // boot sends the logout again instead of asking /api/me, which would sign the browser straight
@@ -74,19 +67,8 @@ function logoutOwed(on) {
   } catch { /* private mode with storage blocked */ }
   return false
 }
-// Mobile build: whose copy the file mirror (lib/mobile.js, opengym-state.json) holds, and which
-// one — { owner, ts }, written after it (saveMirror). A device fact, so never inside S.
-const MIRROR_OWNER_FILE = 'opengym-state-owner.json'
 const CHECK_MIN_MS = 3000    // rev checks closer together than this are the same event (focus + visibility)
-const POLL_MS = 30000        // while the app is open and signed in, ask the server for its revision this often
-const AUTO_BACKUP_SOON_MS = 2000   // several photos picked at once make one backup
-// Whether `next` has a workout photo or video that `prev` had on none of its workouts.
-const workoutMediaHashes = S => (Array.isArray(S?.workouts) ? S.workouts : [])
-  .flatMap(w => (Array.isArray(w?.media) ? w.media.map(m => m?.hash).filter(h => typeof h === 'string' && h) : []))
-const gainedWorkoutMedia = (prev, next) => {
-  const had = new Set(workoutMediaHashes(prev))
-  return workoutMediaHashes(next).some(h => !had.has(h))
-}
+const POLL_MS = 30000;        // while the app is open and signed in, ask the server for its revision this often
 export const DEF = {
   unit: 'kg', restSec: 90, restPauseSec: 15, sound: true, soundOnSilent: false, vibrateOnSilent: false, timerFlash: false, timedSetOvertime: false, keepAwake: true, lang: 'en',
   theme: 'dark', accent: 'lime', body: 'male', targetW: null,
@@ -360,7 +342,6 @@ export function restoredStateFor(local, remote, dirty = false) {
 
 export const useStore = create((set, get) => {
   let pushTm = null
-  let saveTm = null
   let toldTooLarge = false
   let toldNoRoom = false   // the save itself was refused — said once per streak, like the above
   let pushing = null       // the PUT in flight, so a second push waits for it instead of racing it
@@ -376,14 +357,10 @@ export const useStore = create((set, get) => {
   let lastCheck = 0
   let pollTm = null
   let offlineChanges = false   // a push failed for lack of network — the next one that lands says so
-  let backupTm = null      // phone: the auto-backup after workout media changed, on its debounce
   let adoptHold = false    // a sign-in's adoption has not decided yet: no pull, no push (ADOPT_KEY)
   let adopting = null      // the adoptProfile in flight
   let rejoined = false     // the account signing in is the one this copy already belongs to (setUser)
-  let pairedBase = null    // mobile build: the address of the paired server, while there is one
   let fpOf = null          // the copy the stored fingerprint was last taken of (confirmed)
-  let keeping = null       // phone: the file write of what keepForPrevious set aside, until it lands
-  let mirrorQ = Promise.resolve()   // phone: the file mirror's writes, one after the other (saveMirror)
   // The write of the saved copy this tab last read or made, and whose copy it was (joinSaved).
   let seenWid = (() => { try { return localStorage.getItem(WID_KEY) } catch { return null } })()
   let seenOwner = (() => { try { return localStorage.getItem('gym_owner') } catch { return null } })()
@@ -521,38 +498,7 @@ export const useStore = create((set, get) => {
   // subpath (#238) in a browser. null on a phone without one — local mode, or a pairing lost
   // under an earlier version, which kept no address.
   const serverBase = () => {
-    if (MOBILE) return pairedBase
     try { return location.origin && location.origin !== 'null' ? location.origin + appBase().replace(/\/$/, '') : null } catch { return null }
-  }
-
-  initReminderSync(() => get().S)
-  // A phone with its own Coach key runs its automatic reviews itself, while the app is open.
-  initCoachSchedule(() => get())
-  // What it reads back from the health hub (heart rate, weigh-ins) goes in as any change does.
-  initHealthSync(() => get().S, fn => get().update(fn))
-
-  // Mobile build: the file mirror, and beside it whose copy it is and which one (its `_ts`) —
-  // restoreFromMirror takes the file back only for that account, and only while the two agree,
-  // so a mirror write that failed, or a kill between the two writes, leaves a file that is never
-  // taken. One write at a time, each of the copy in the store when its turn comes: a slow write
-  // can never land after a later one.
-  const saveMirror = () => (mirrorQ = mirrorQ.then(async () => {
-    const S = get().S
-    let owner = null
-    try { owner = localStorage.getItem('gym_owner') } catch { /* unknown — the file is then nobody's */ }
-    await nativeSave(S)
-    await writeJsonFile(MIRROR_OWNER_FILE, { owner, ts: S._ts || 0 })
-  }).catch(() => {}))
-  // Mobile build: mirror the state into a file in the app's data directory (survives WebView
-  // storage eviction) and keep the native reminder schedule in step with the weekly plan.
-  // `now` skips the wait and returns the write, for a copy that replaced the last one wholesale.
-  const nativePersist = (now = false) => {
-    clearTimeout(saveTm)
-    saveTm = null
-    const write = () => { saveTm = null; syncReminder(get().S); syncHealth(get().S).catch(() => {}); readHealth(() => get().S).catch(() => {}); return saveMirror() }
-    if (now) return write()
-    saveTm = setTimeout(write, 800)
-    return null
   }
 
   // `_ts` is when this device last changed the data — it decides which copy wins on the next
@@ -665,12 +611,7 @@ export const useStore = create((set, get) => {
     // to the file at once rather than after the usual wait. localStorage alone is not enough there:
     // the WebView writes it to disk on its own schedule, and an app killed within that moment (or
     // iOS ending it in the background before the page's timers run again) lost the last set.
-    const workoutMoved = MOBILE && JSON.stringify(get()?.S?.active ?? null) !== JSON.stringify(S.active ?? null)
     set({ S })
-    // A copy that replaces the last one wholesale and keeps an older stamp — adopted from the
-    // server — goes to the file at once. Until it does, the file holds the copy it replaced,
-    // which looks newer, and a start in between would take that one back (restoreFromMirror).
-    if (MOBILE) nativePersist(!stamp || workoutMoved)
     if (push && get().user) {
       // Before boot has pulled, the copy in hand may be older than the server's: a push now
       // would carry it with a stale (or no) baseRev. It waits for finishBoot.
@@ -722,7 +663,6 @@ export const useStore = create((set, get) => {
   window.addEventListener('focus', () => checkRev())
   window.addEventListener('pageshow', e => { if (e.persisted) checkRev() })
   window.addEventListener('online', () => checkRev(true))   // also retries a push that failed offline
-  onAppActive(() => checkRev())
   schedulePoll()
 
   // Both copies changed: keep both sides' entries, let the newer copy decide the rest
@@ -835,7 +775,6 @@ export const useStore = create((set, get) => {
   // same applies to the file mirror — backgrounding is often the last thing before the OS
   // kills the app.
   const flush = () => {
-    if (MOBILE && saveTm) nativePersist(true)
     if (pushTm) {
       clearTimeout(pushTm)
       pushTm = null
@@ -844,9 +783,6 @@ export const useStore = create((set, get) => {
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush() })
   window.addEventListener('pagehide', flush)   // Safari kills the home-screen app without a visibilitychange at times
-  // The phone app: Capacitor's own "going to the background" too, in case the WebView's
-  // visibilitychange comes late or not at all before iOS suspends the page.
-  document.addEventListener('pause', flush)
 
   // The owner check in setUser only runs in the tab that signs in. Another tab of the same
   // browser still holding the previous profile, or a guest's copy, would keep writing it over the
@@ -1015,7 +951,7 @@ export const useStore = create((set, get) => {
     // On a phone the file is wiped with it, now rather than after the usual wait: a start in
     // between would open in local mode on the signed-out account's data, since that boot takes
     // the file whenever storage holds nothing.
-    const wiped = MOBILE ? nativePersist(true) : null
+    const wiped = null
     // The account's photos and videos go with its copy (a shared device keeps nothing of it),
     // except the ones a stash still refers to — whatever was pending is in a stash by now
     // (signOut refuses otherwise) and comes back with it. A file picked from here on is kept.
@@ -1042,7 +978,6 @@ export const useStore = create((set, get) => {
   const readStashes = async () => {
     let all = {}
     try { all = JSON.parse(localStorage.getItem(STASH_KEY)) || {} } catch { /* none */ }
-    if (MOBILE) { const f = await readJsonFile(STASH_FILE); if (f && typeof f === 'object') all = { ...all, ...f } }
     return all
   }
   // True when at least one durable copy of the stashes was written.
@@ -1050,11 +985,6 @@ export const useStore = create((set, get) => {
     const empty = !Object.keys(all).length
     let ok = false
     try { if (empty) localStorage.removeItem(STASH_KEY); else localStorage.setItem(STASH_KEY, JSON.stringify(all)); ok = true } catch { /* full */ }
-    if (MOBILE) {
-      await writeJsonFile(STASH_FILE, all)
-      const back = await readJsonFile(STASH_FILE)
-      ok = ok || (!!back && Object.keys(back).length === Object.keys(all).length)
-    }
     set({ keptRev: get().keptRev + 1 })
     return ok || empty
   }
@@ -1098,7 +1028,6 @@ export const useStore = create((set, get) => {
       try { localStorage.removeItem(KEY); localStorage.setItem(STASH_KEY, v) } catch { /* still full — the file may still take it */ }
     }
     set({ keptRev: get().keptRev + 1 })
-    if (MOBILE) keeping = readStashes().then(f => writeStashes({ ...f, [key]: entry })).catch(() => {})
   }
   // What a sign-out or disconnect answers when something is owed: how many changes, and how many
   // photos or videos, when there are any.
@@ -1166,7 +1095,6 @@ export const useStore = create((set, get) => {
     merged.active = S.active || keys.map(k => carryActive(all[k].state, merged)).find(Boolean) || null
     persist(merged, false)
     markOwed(true)
-    if (MOBILE) await nativePersist(true)   // the durable copy holds it before the stash goes
     await get().pushState()
     for (const k of keys) delete all[k]
     await writeStashes(all)
@@ -1228,7 +1156,7 @@ export const useStore = create((set, get) => {
     }
     const S0 = get().S
     if (!state) {
-      const push = hasData(S0) && (!alwaysAsk || sameAccount || await askAbout(localExtras(S0, null)))
+      const push = hasData(S0) && (!alwaysAsk || sameAccount || (await askAbout(localExtras(S0, null))))
       releaseAdopt()
       if (hasData(get().S) && !push) {
         if (asked) await keepDeviceCopy()
@@ -1327,29 +1255,6 @@ export const useStore = create((set, get) => {
     return Object.fromEntries(ADOPT_FIELDS.map(f => [f, ids[f] || []]))
   }
 
-  // The file mirror is the durable copy: WebView storage can be evicted while the files
-  // directory survives. A mirror newer than what localStorage holds is a change this phone made
-  // and may not have sent — it is taken, and owed. Only the paired account's own, though, and
-  // only the copy the owner file says was written (saveMirror): one another account left there,
-  // or one the file never finished replacing, is not this account's latest — taken, it used to
-  // be pushed into whichever account was paired now. And it goes without the revision storage
-  // quotes, so the pull merges it with the server's copy (its first-sync path): the file can
-  // still hold a copy the server has since moved past, and a merge brings back at most what was
-  // deleted meanwhile, where a push with a matching baseRev dropped the other side's work.
-  const restoreFromMirror = async remote => {
-    const saved = await nativeLoad()
-    if (!saved || (saved._ts || 0) <= (get().S._ts || 0)) return
-    const of = await readJsonFile(MIRROR_OWNER_FILE)
-    const who = remote?.user?.id || null
-    let owner = null
-    try { owner = localStorage.getItem('gym_owner') } catch { /* evicted along with the copy */ }
-    if (!who || of?.owner !== who || (owner && owner !== who) || of.ts !== (saved._ts || 0)) return
-    try { if (!owner) localStorage.setItem('gym_owner', who) } catch { /* setUser writes it again */ }
-    seenOwner = readOwner()
-    persist(sanitizeAccent(Object.assign(clone(DEF), saved)), false, false)
-    dropSync()
-    markOwed(true)
-  }
 
   const S0 = loadState()
   S0.customEx = healCustomEx(S0.customEx)
@@ -1375,21 +1280,9 @@ export const useStore = create((set, get) => {
        hangs off it via coachAvailable(), so an unconfigured instance renders exactly what it
        always did, and a configured one is the only place any of it appears. */
     config: null,
-    needsMobileOnboarding: false,   // mobile build only — set true by boot() on a genuine first launch
-    // Mobile build only: the first-start permission steps (views/PermissionSteps.jsx) are due.
-    // Set when that first launch's choice is made; never persisted, the steps keep their own
-    // once-per-device record (lib/onboarding-perms.js).
-    permSteps: false,
-    finishPermSteps() { set({ permSteps: false }) },
     // A one-time device-link code this page was opened with (?link=, #95), until it is redeemed.
     // Never persisted: the code is good for minutes and belongs to this one visit.
     linkCode: null,
-    // Mobile build only: how the Coach runs on this phone — { mode: 'off'|'server'|'byok',
-    // provider, model, baseUrl } from lib/coach-device.js. Never the key, never a proposal.
-    coachLocal: null,
-    async setCoachLocal(patch) {
-      set({ coachLocal: coachDeviceSettings(await saveCoachDevice(patch)) })
-    },
 
     // Mutate a draft of S via producer fn, then persist + schedule sync. Every routine the change
     // touched carries the time of it, for a conflict to keep the version edited last.
@@ -1398,7 +1291,7 @@ export const useStore = create((set, get) => {
     // over from somewhere that keeps its own copy until told (the watch's and the Live Activity's
     // queues) waits for this before it lets go of it.
     saveNow() {
-      return MOBILE ? nativePersist(true) : Promise.resolve()
+      return Promise.resolve();
     },
     update(mut, push = true) {
       const prev = get().S
@@ -1418,13 +1311,6 @@ export const useStore = create((set, get) => {
       S._ts = stampChange(prev, S, Date.now())
       if (prevJson !== null && JSON.stringify(prev) !== prevJson) throw new Error('update(): the previous state was changed in place')
       persist(S, push)
-      // A photo or video added to a workout is a change worth the day's backup too: the one
-      // finishing wrote went before the finish screen's pictures (autoBackupNow). Not a removal,
-      // nor a workout deleted: the day's copy then still holds what was taken off, as a backup should.
-      if (MOBILE && S.autoBackup && gainedWorkoutMedia(prev, S)) {
-        clearTimeout(backupTm)
-        backupTm = setTimeout(() => { backupTm = null; get().autoBackupNow() }, AUTO_BACKUP_SOON_MS)
-      }
     },
     // An edit of a saved workout (lib/session-edit.js) is saved or dropped like any other change:
     // the store's own sync takes it to the server, and a conflict on the way is settled by
@@ -1570,13 +1456,6 @@ export const useStore = create((set, get) => {
       persist(keepReset(get().S, clone(S)), push)
     },
 
-    // Fires after the moments where losing local data would actually hurt — a workout just
-    // logged, a routine just edited — not on every keystroke. No-op off mobile or with the
-    // setting off; the private file mirror (nativePersist, above) already covers every change.
-    autoBackupNow() {
-      const S = get().S
-      if (MOBILE && S.autoBackup) writeAutoBackup(S)
-    },
 
     isGuest: () => STATIC || localStorage.getItem('gym_guest') === '1',
     // Choosing to go on without a server ends whatever was said about the last one.
@@ -1666,8 +1545,6 @@ export const useStore = create((set, get) => {
         // now. Another tab of this browser takes only a copy saved under the new owner, and went
         // blank until this one happened to save something (takeSaved).
         if (!adopt && !other && owner !== u.id) persist(get().S, false, false)
-        // The file follows at once, as the new account's: until then it holds the previous one's.
-        if (other && MOBILE) nativePersist(true)
         // The server answers /api/config with a `coach` key only to a session — the block, or
         // null on an instance that has no Coach. So a copy with no key at all is one fetched
         // before this sign-in (boot's, or the login screen asking for invite_only), and every
@@ -1844,8 +1721,6 @@ export const useStore = create((set, get) => {
       try {
         if (typeof ask !== 'function') ask = (await import('../sheets.jsx')).askAddDeviceData
         const r = await get().adoptProfile(ask, { alwaysAsk: !!m.alwaysAsk })
-        // A phone whose pairing ended here: what connectToServer does after its own adoption.
-        if (MOBILE) { await nativePersist(true); if (get().needsMobileOnboarding) set({ needsMobileOnboarding: false, permSteps: true }) }
         return r
       } catch { return null }
     },
@@ -1867,48 +1742,11 @@ export const useStore = create((set, get) => {
       if (!left.owed && !(await stashActive())) return { owed: true, count: 0, stashed: false }
       // The device is signed out either way. A request that did not get through leaves the cookie
       // behind, still valid, so the logout is owed until the server answers it (see boot).
-      try { await api('/api/logout', { method: 'POST', body: '{}' }) } catch (e) { if (!MOBILE) logoutOwed(true) }
+      try { await api('/api/logout', { method: 'POST', body: '{}' }) } catch (e) {
+        logoutOwed(true)
+      }
       await clearLocalSession()
       return left.owed ? owedResult(left, { stashed: true }) : { owed: false }
-    },
-
-    // Mobile-only ("connect to my server" onboarding, see App.jsx's needsMobileOnboarding).
-    // Picking local — even before there's any data — persists the choice so onboarding never
-    // asks again.
-    async chooseLocalMode() {
-      await chooseLocal()
-      set({ needsMobileOnboarding: false, permSteps: true })
-    },
-    // Redeems the pairing code shown in the browser (Settings → "Pair the mobile app") and
-    // switches this device over to that account, same as signing in on the web does — the same
-    // account pairing again merges what the phone kept (adoptProfile).
-    async connectToServer(url, code, ask) {
-      const user = await connect(url, code)   // throws on a bad URL/expired code — caller shows it
-      // The account first, the address after: a copy another account still owed is kept aside
-      // for it under the server it belongs to, not the one being paired.
-      get().setUser(user, { adopt: true })
-      if (keeping) { await keeping; keeping = null }
-      pairedBase = normalizeServerUrl(url)
-      setSync({ server: pairedBase })
-      await get().refreshConfig()   // what this server offers (the Coach, guest mode) — see boot()
-      await get().adoptProfile(ask)
-      await nativePersist(true)   // the file holds this account's copy before anything else can happen
-      // Paired from the first-launch screen: the permission steps come next. From Settings later
-      // on, nothing new is asked here.
-      set(st => ({ needsMobileOnboarding: false, permSteps: st.permSteps || st.needsMobileOnboarding }))
-    },
-    // Leaves remote mode and drops back to local-only, the way signOut does: never with changes
-    // the server has not seen, unless `force` keeps them aside first. Same result as signOut;
-    // the phone stays paired when that comes back owed and not stashed.
-    async disconnectServer(opts) {
-      const r = await get().signOut(opts)
-      if (r.owed && !r.stashed) return r
-      await forgetRemote()
-      pairedBase = null
-      setSync({ server: null })
-      get().setGuest(true)
-      set({ ready: true })
-      return r
     },
 
     // "Sign out everywhere": the server bumps this profile's session version, which kills every
@@ -1944,13 +1782,6 @@ export const useStore = create((set, get) => {
       const key = stashKey(serverBase(), uid)
       if (all[key]) { delete all[key]; await writeStashes(all) }
       await clearLocalSession()
-      if (MOBILE) {
-        await forgetRemote()
-        pairedBase = null
-        setSync({ server: null })
-        get().setGuest(true)
-        set({ ready: true })
-      }
     },
 
     // Demo build only: drop the seeded example profile back in (Settings → "Reset demo data").
@@ -1965,81 +1796,6 @@ export const useStore = create((set, get) => {
 
     // Boot: ask the server who we are, then pull.
     async boot() {
-      // Mobile build: no backend by default — restore from the file mirror (the durable copy;
-      // localStorage may have been evicted since the last run) and go straight in. Unless this
-      // device was paired to a server ("connect to my server" mode, lib/remote.js), in which
-      // case it behaves exactly like the signed-in web flow below, straight from here.
-      if (MOBILE) {
-        const remote = await loadRemote()
-        // Before the first request: a server behind Cloudflare Access answers nothing without it.
-        await loadCfAccess({ pairedBase: remote?.mode === 'remote' ? remote.base : '' })
-        set({ coachLocal: coachDeviceSettings(await loadCoachDevice()) })
-        if (remote?.mode === 'remote') {
-          setRemoteAuth(remote.base, remote.token)
-          pairedBase = remote.base || null
-          setSync({ server: pairedBase })
-          await restoreFromMirror(remote)
-          try {
-            const me = await api('/api/me')   // also catches a token revoked elsewhere (sign out everywhere)
-            if (!me.user?.id) throw Object.assign(new Error('no user'), { status: 200, code: 'bad-response' })
-            // A token past half its life comes back renewed: kept, it never runs out on a phone
-            // that is used at all.
-            if (typeof me.token === 'string' && me.token) await renewToken(remote, me.token)
-            get().setUser(me.user)
-            // The paired server's /api/config, the same one the web boot reads: without it the
-            // phone never learned whether the server offers the Coach and told everyone "your
-            // server has no Coach enabled" — with the admin looking at a green test.
-            await get().loadConfig()
-            // Closed with the pairing's question still open: asked again, and nothing is pulled
-            // or pushed until it is answered — this copy may still be the one from before pairing.
-            if (adoptOwed()) {
-              syncReminder(get().S)
-              finishBoot()
-              // The adoption applies what the pull would have (its stash included); the reminder
-              // then follows the copy it settled on.
-              get().resumeAdoption().then(() => syncReminder(get().S))
-              return
-            }
-            await get().pullState()
-            if (!get().sync.lastError) await applyStash()   // only once the server really answered
-          } catch (e) {
-            // Whatever the answer — no network, a server error, a token the server no longer
-            // accepts — the pairing, this copy and the account all stay, and what is owed stays
-            // owed. A refused token used to unpair the phone on the spot while it went on showing
-            // the account: every change after that "synced" into the app's own files (see
-            // lib/api.js) and was gone on the next Disconnect. Now the screens say the server
-            // refuses this phone, and pairing it again merges what it kept.
-            get().setUser(remote.user || get().user)
-            failed(e, { pending: owes() })
-          }
-          syncReminder(get().S)
-          finishBoot()
-          return
-        }
-        const saved = await nativeLoad()
-        const S = get().S
-        if (saved && (!hasData(S) || (saved._ts || 0) >= (S._ts || 0))) {
-          persist(sanitizeAccent(Object.assign(clone(DEF), saved)), false, false)
-        } else if (hasData(S)) {
-          nativePersist(true)   // first run after an update from a file-less version: seed the mirror
-        }
-        if (get().user) {
-          // A phone that lost its pairing to a refused token under an earlier version: that boot
-          // dropped the pairing file — address and token with it — but not the account, and every
-          // push since "landed" on the WebView's own asset server. No other path leaves an
-          // account in local mode (Disconnect and "keep it on this phone" both leave none), so
-          // this is that phone. What it holds stays owed, and the screens say it has to be paired
-          // again; the address is gone, so pairing asks for it.
-          markOwed(true)
-          failed({ status: 0, code: 'not-paired' }, { pending: true })
-        } else get().setGuest(true)
-        syncReminder(get().S)
-        // Only a genuinely first launch — nothing chosen yet and nothing to lose either — offers
-        // the choice. Picking local (even with no data yet) persists that choice below and this
-        // never asks again.
-        finishBoot({ needsMobileOnboarding: !remote && !hasData(get().S) })
-        return
-      }
       if (STATIC) {
         finishBoot()
         return
@@ -2111,7 +1867,7 @@ export const useStore = create((set, get) => {
       }
       finishBoot()
     }
-  }
+  };
 })
 
 export { hasData }

@@ -1,14 +1,14 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
-import { EXDB, EXIDX, BODYPARTS, isCardio, isBodyweightEq, allExercises, equipmentOf, byCategory, smOf, searchExercises, similarExercises, exOr, isAssisted, betterWeight, beatsWeight, isCustomEx } from './lib/exercises.js'
+import { EXIDX, BODYPARTS, isCardio, isBodyweightEq, allExercises, equipmentOf, byCategory, smOf, searchExercises, similarExercises, exOr, isAssisted, betterWeight, beatsWeight, isCustomEx } from './lib/exercises.js'
 import { activeProfile, exAvailable, ALL_EQUIPMENT, newProfile, profileEquipment, ACC_V } from './lib/equipment.js'
-import { fmtDate, fmtDateRange, fmtNum, fmtPlate, exerciseNameText, fmtVol, fmtDur, durPart, todayISO, isoOf, uid, exCount, routineCount, setsWorkCount, DAYN, DAYS, weekOrder, weekStartOf, weekDayOffset, MONTHS_LONG, ACCENTS } from './lib/format.js'
-import { lastEntryFor, bestWeightFor, bestWeightForEntry, buildSets, effectiveRoutineIds, workoutDay, workoutVolume, sessionVolume, countsWarmups, setsDone, setsDoneActive, setUnitsTotal, lastBW, sessionSections, setLabel, defaultConfig, pickedExerciseConfig, cleanupSg, modeOf, effortOf, EFFORT, capEffort, stepEffort, isBw, isPerSide, sideReps, workSetsDone, applyIntensifierPlan, MAX_PLANNED_WARMUPS, NOTE_MAX } from './lib/history.js'
+import { fmtDate, fmtDateRange, fmtNum, fmtPlate, exerciseNameText, fmtVol, fmtDur, durPart, todayISO, isoOf, uid, exCount, routineCount, setsWorkCount, DAYN, DAYS, weekOrder, weekStartOf, weekDayOffset, MONTHS_LONG } from './lib/format.js'
+import { lastEntryFor, bestWeightFor, bestWeightForEntry, effectiveRoutineIds, workoutDay, workoutVolume, sessionVolume, countsWarmups, setsDone, setsDoneActive, setUnitsTotal, lastBW, sessionSections, setLabel, defaultConfig, pickedExerciseConfig, cleanupSg, modeOf, effortOf, EFFORT, capEffort, stepEffort, isBw, isPerSide, sideReps, workSetsDone, MAX_PLANNED_WARMUPS, NOTE_MAX } from './lib/history.js'
 import { usesBar, hasBarOverride, isNoBar, barTypeWeight, ownBarDefault, barPicks, withBarDefault, withStandardBars, defaultBarWeight, BAR_TYPES } from './lib/bar.js'
-import { PLATE_SIZES, pairsOf, ownsPlates, withPlatePairs, withStandardPlates, withLoadKind, loadKindFor, baseWeightFor, dropGrid } from './lib/plates.js'
+import { PLATE_SIZES, pairsOf, ownsPlates, withPlatePairs, withStandardPlates, withLoadKind, loadKindFor, baseWeightFor } from './lib/plates.js'
 import { toScale, rirOf, EFFORT_PRESETS, effortColor } from './lib/effort.js'
-import { beep, vibrate } from './lib/sound.js'
+import { beep } from './lib/sound.js'
 import { t, tn, dateLocale, instrFor, instrTranslated, descFor, exerciseNameFor, exerciseNameClass, getLang, useLang } from './lib/i18n.js'
 import { nav, closeThenNav, navToWorkout } from './lib/nav.js'
 import { buildStarterPlan, starterPlanDays, starterPlanOptions } from './lib/starter.js'
@@ -36,18 +36,16 @@ import { sameMuscleFirst, swapMuscleOf } from './lib/similar-exercises.js'
 import { exerciseMuscleSnapshot, loadOfWorkouts, MUSCLES, MUSCLE_NAME, muscleWeightsOf, muscleGroupsOf, hasExplicitMuscleMetadata, inMuscleOrder } from './lib/muscles.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
 import { importHevyData, HevyApiError, HEVY_DEV_SETTINGS, mergeHevyRoutines, hevySummaryCounts } from './lib/import-hevy.js'
-import { buildPlanBundle, parsePlan, mergePlan, printPlan, planPrintHTML } from './lib/plan-share.js'
-import { printOptions } from './lib/print-doc.js'
+import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
 import { printWorkout } from './lib/report-print.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP, formulaOf, FORMULA_NAMES } from './lib/onerm.js'
 import { exerciseHistory } from './lib/exercise-history.js'
 import { relativeSeries } from './lib/relative-strength.js'
-import { isBellEx, dbLoadOf, dbLoadFor, withDbLoad, entryDbLoad, currentDbLoad, isOneArm, dumbbellsOf, ownsDumbbells, withDumbbells, ownsNoDumbbells, withNoDumbbells, presetWeights, cleanWeights, canHaveStack, stackOf, withStack, stackFromStep } from './lib/dumbbells.js'
+import { isBellEx, dbLoadOf, dbLoadFor, withDbLoad, entryDbLoad, currentDbLoad, isOneArm, dumbbellsOf, withDumbbells, ownsNoDumbbells, withNoDumbbells, presetWeights, cleanWeights, canHaveStack, stackOf, withStack, stackFromStep } from './lib/dumbbells.js'
 import { policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC, MAX_BW_SETS, MAX_TRIPLE_SETS } from './lib/progression.js'
 import { normalizeRepRange } from './lib/rep-range.js'
 import { isBackoff, backoffWeights } from './lib/backoff.js'
 import { isPyramid, normalizePyramid, normalizePyramidRest, normalizePyramidWeight, pyramidFromFlat, flatFromPyramid, pyramidLabel, PYRAMID_MAX, MAX_PYRAMID_SETS, PYRAMID_PRESETS } from './lib/pyramid.js'
-import { MOBILE, shareExport, shareExportBlob, printHtml } from './lib/mobile.js'
 import { speedUnitOf, toSpeed, fromSpeed } from './lib/speed.js'
 import { clampIncline, inclineFits, INCLINE_MAX, INCLINE_STEP } from './lib/incline.js'
 import { buildCompletedWorkout, sessionEnd } from './lib/finish-workout.js'
@@ -60,7 +58,7 @@ import { swapActiveExercise } from './lib/active-exercise-swap.js'
 import { useSheetKeyboard, useRevealActiveChip, tappable } from './lib/use-sheet-keyboard.js'
 import { useAutoMore } from './lib/use-auto-more.js'
 import { isFav, toggleFav, sortFavouritesFirst, sortYoursFirst } from './lib/favourites.js'
-import { buildSessionEntries, buildPlannedEntry, buildSessionEntry, plannedConfigOf } from './lib/session-start.js'
+import { buildSessionEntries, buildSessionEntry, plannedConfigOf } from './lib/session-start.js'
 import { finishCompare, finishCardio } from './lib/finish-compare.js'
 import { workoutFit, fitFileName } from './lib/fit-export.js'
 import { joinSessionNoProg } from './lib/session-noprog.js'
@@ -2486,7 +2484,6 @@ export async function exportPlanFile() {
   const bundle = buildPlanBundle(st, user?.name ? t('{0}’s plan', user.name) : '')
   const json = JSON.stringify(bundle, null, 2)
   const name = 'opengym-plan-' + todayISO() + '.json'
-  if (MOBILE) { try { await shareExport(json, name) } catch (e) { /* dismissed */ } return }
   const blob = new Blob([json], { type: 'application/json' })
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
   toast(t('Plan file saved. Send it to a friend!'))
@@ -2495,8 +2492,7 @@ export async function exportPlanFile() {
 // Print plugin — Android WebView has no window.print(). Same printable HTML both ways.
 export function printWholePlan() {
   const st = S(), owner = useStore.getState().user?.name || ''
-  if (MOBILE) printHtml(planPrintHTML(st, owner), t('Weekly Training Plan'), printOptions()).catch(() => { /* dismissed */ })
-  else printPlan(st, owner)
+  printPlan(st, owner)
 }
 // A picked plan file → the import sheet, or a toast saying why not.
 export function importPlanFile(f, onRead) {
@@ -2824,7 +2820,7 @@ function WorkoutDetail({ w, close }) {
   // Copied with the note as it stands in the box, which may not be saved yet.
   const copyAsText = async () => {
     const rec = { ...(st.workouts.find(x => sameWorkout(x, w)) || w), note: note.trim() }
-    toast(await copyText(workoutText(rec, { unit: st.unit, nameOf, speedUnit: speedUnitOf(st), warmups: countsWarmups(st) })) ? t('Copied') : t('Could not copy'))
+    toast((await copyText(workoutText(rec, { unit: st.unit, nameOf, speedUnit: speedUnitOf(st), warmups: countsWarmups(st) }))) ? t('Copied') : t('Could not copy'))
   }
   // A Garmin .fit activity (#447) of the saved record, for Garmin Connect's Import Data.
   const exportFit = () => {
@@ -3000,14 +2996,12 @@ async function workoutCardImage(model, { map, body }) {
 // The .fit file goes out the way a backup does: the share sheet in the phone app (Files, Drive,
 // Garmin Connect itself), a download in the browser.
 async function saveFitFile(blob, name) {
-  if (MOBILE) { try { await shareExportBlob(blob, name) } catch (e) { /* share sheet dismissed */ } return }
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
   toast(t('Saved. Garmin Connect can take it from here.'))
 }
 // The phone app goes through the OS share sheet the way a backup does; a browser that can share
 // files (most phones) opens its own; anything else saves the picture as a download.
 async function shareImage(blob, name, title) {
-  if (MOBILE) { try { await shareExportBlob(blob, name) } catch (e) { /* share sheet dismissed */ } return }
   const file = typeof File === 'function' ? new File([blob], name, { type: 'image/png' }) : null
   if (file && navigator.canShare?.({ files: [file] })) {
     try { await navigator.share({ files: [file], title }) } catch (e) { /* dismissed */ }
@@ -3115,8 +3109,6 @@ export function startFlow(routineIds) {
   if (S().weighIn === false) { beginWorkout(routineIds, null); return }
   bwSheet({ required: true, onDone: bw => beginWorkout(routineIds, bw) })
 }
-// `opts` from the Apple Watch (lib/watch-sync.js): a session started there keeps the watch's id,
-// so the sets ticked on it find it, and its start time, however late the phone hears of it.
 export function beginWorkout(routineIds, bw, { id = null, start = null } = {}) {
   const st = S()
   const { entries, routineIds: rids, routines } = buildCombinedEntries(st, routineIds)
@@ -3547,7 +3539,6 @@ export function saveWorkoutEdits(onExit = () => nav('/history')) {
         useStore.getState().deleteHistoryEdit()
         useUI.getState().stopRest()
         useUI.getState().stopWork()
-        useStore.getState().autoBackupNow()
         toast(t('Workout deleted'))
         onExit()
       },
@@ -3558,7 +3549,6 @@ export function saveWorkoutEdits(onExit = () => nav('/history')) {
     useStore.getState().saveHistoryEdit()
     useUI.getState().stopRest()
     useUI.getState().stopWork()
-    useStore.getState().autoBackupNow()
     toast(t('Workout updated'))
     onExit()
   } catch (error) { toast(t(error.message)) }
@@ -3731,10 +3721,7 @@ export function finishWorkoutSheet({ onDiscard } = {}) {
     ],
   })
 }
-// Finish and save without a question: the Apple Watch's Finish (lib/watch-sync.js) runs exactly
-// what the phone's Finish and save runs.
-export const finishWorkoutNow = () => doFinishWorkout()
-function doFinishWorkout() {
+export function doFinishWorkout() {
   const st = S()
   const A = st.active
   if (!A) return
@@ -3786,7 +3773,6 @@ function doFinishWorkout() {
     // (lib/rotation.js). A planner's queue is left alone: it completes and waits for its writer.
     refillAfter(s, w)
   })
-  useStore.getState().autoBackupNow()
   useUI.getState().stopRest()
   // A hold still counting (a plank left unchecked, then Finish early) goes with the workout, as
   // on Discard: its bar is app-wide and would chime over the summary, and its callback writes

@@ -27,7 +27,7 @@ import { workoutSettingsSheet } from '../components/WorkoutSettingsSheet.jsx'
 import { SessionMapButton } from '../components/SessionMuscles.jsx'
 import { durationSheet } from '../components/DurationWheel.jsx'
 import { REST_MAX, fmtRest, restWheelValue } from '../lib/duration.js'
-import { startFlow, exercisePicker, exConfigSheet, exerciseDetailSheet, finishWorkout, exitWorkoutEdit, workoutCompleteSheet, confirmSheet, exerciseNoteSheet, sessionNoteSheet, renameWorkoutSheet, swapActiveWorkoutExercise, barWeightSheet, menuSheet, effortPickerSheet, exerciseHistorySheet, addRoutineToSessionSheet, finishWorkoutSheet, finishWorkoutNow, swapActiveWorkoutToBackup } from '../sheets.jsx'
+import { startFlow, exercisePicker, exConfigSheet, exerciseDetailSheet, finishWorkout, exitWorkoutEdit, workoutCompleteSheet, confirmSheet, exerciseNoteSheet, sessionNoteSheet, renameWorkoutSheet, swapActiveWorkoutExercise, barWeightSheet, menuSheet, effortPickerSheet, exerciseHistorySheet, addRoutineToSessionSheet, finishWorkoutSheet, swapActiveWorkoutToBackup } from '../sheets.jsx'
 import { afterScrollRestore, scrollRestorePending } from '../components/Modals.jsx'
 import { effortColor } from '../lib/effort.js'
 import Elapsed from '../components/Elapsed.jsx'
@@ -40,9 +40,7 @@ import { routineChangesFromEntry, updateRoutineFromEntry } from '../lib/routines
 import { sessionNoProg, setSessionNoProg, setEntryNoProg, joinSessionNoProg } from '../lib/session-noprog.js'
 import { glyphOf } from '../lib/glyphs.js'
 import { markAllSetsDone, sessionHistory } from '../lib/backfill.js'
-import { bindWatchActions, markDiscarded } from '../lib/watch-sync.js'
 import { bestSetFor } from '../lib/exercise-history.js'
-import { bindLiveActions } from '../lib/live-activity.js'
 import { isWarmupRow, isFailureSet, toggleFailure, isDropSet, isRestPauseSet, dropsOf, clustersOf, addDrop, addCluster, removeDropAt, removeClusterAt, setDropAt, setClusterAt, nextDropWeight, nextBurstReps, isSideSet, makeSideSet, setSideField, toggleSide, addSideDrop, removeSideDropAt, setSideDropAt, addSideCluster, removeSideClusterAt, setSideClusterAt, WEIGHT_ORIGIN_MANUAL } from '../lib/workout-model.js'
 import { canMoveActiveWorkoutUnit, moveActiveWorkoutUnit, canMoveActiveWorkoutEntry, moveActiveWorkoutEntry } from '../lib/active-workout-order.js'
 import { nextOpenSet, workoutKeyAction } from '../lib/workout-keys.js'
@@ -1560,7 +1558,7 @@ function ActiveWorkout() {
   // the two got mixed up (#751).
   // Named for the watch first: gone from its snapshot it would look finished, and be saved to Apple Health (#776).
   // The watch's own Discard (confirmed there) runs this too.
-  const discardNow = () => { markDiscarded(useStore.getState().S.active?.id); update(s => { s.active = null }); stopRest(); stopWork(); nav('/home') }
+  const discardNow = () => { update(s => { s.active = null }); stopRest(); stopWork(); nav('/home') }
   const discardWorkout = () => confirmSheet({
     title: t('Discard workout?'), message: t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true,
     onConfirm: discardNow,
@@ -1906,76 +1904,6 @@ function ActiveWorkout() {
       onFocusProgress?.({ unitDone: freshUnitDone })
     }
   }
-  // The Apple Watch ticks sets through this same toggle (lib/watch-sync.js): the weight and reps it
-  // logged go into the row first, then the tick runs as if tapped here (rest, high-water mark, the
-  // end-of-workout sheet). A row already ticked only takes the numbers.
-  const toggleRef = useRef(toggle)
-  toggleRef.current = toggle
-  // The time is the watch's: the phone may hear of the set much later (lib/finish-workout.js
-  // sessionEnd reads the sets' times). The watch's Finish runs the phone's Finish and save.
-  useEffect(() => bindWatchActions({
-    setDone: (idx, i, { w, r, sec, side, at, hr, rpe, rir }) => {
-      if (useStore.getState().S.active?.editingWorkoutId) return   // a saved workout being edited is not the session
-      const now = useStore.getState().S.active?.entries?.[idx]?.sets?.[i]
-      // One side of a per-side set (a unilateral exercise): that side's numbers and its own tick.
-      const oneSide = side && isSideSet(now) ? side : null
-      const wasDone = oneSide ? now.sides[oneSide].done : now?.done
-      // The same set ticked here after the watch did: the later tick wins, the heart rate still lands.
-      // The effort the watch logged (lib/watch-sync.js effortFrom): RPE or RIR, never both.
-      const eff = rpe != null ? ['rpe', rpe] : rir != null ? ['rir', rir] : null
-      if (wasDone && at && Number(now.at) > at) {
-        if (hr) mutEntry(idx, en => { if (en.sets[i]) en.sets[i].hr = hr })
-        // the phone's rating wins, the watch's only fills a set that has none
-        if (eff && !oneSide && now.rpe == null && now.rir == null) mutEntry(idx, en => { if (en.sets[i]) en.sets[i][eff[0]] = eff[1] })
-        return
-      }
-      mutEntry(idx, en => {
-        const set = en.sets[i]
-        if (!set) return
-        if (oneSide) {
-          if (w != null) en.sets[i] = setSideField(en.sets[i], oneSide, 'w', w)
-          if (r != null) en.sets[i] = setSideField(en.sets[i], oneSide, 'r', r)
-          if (eff) en.sets[i] = setSideField(en.sets[i], oneSide, eff[0], eff[1])
-          return
-        }
-        if (w != null) set.w = w
-        if (r != null) set.r = r
-        if (sec != null) set.sec = sec   // a hold: the seconds it lasted on the watch
-        if (eff) { delete set.rpe; delete set.rir; set[eff[0]] = eff[1] }
-      })
-      if (!wasDone) toggleRef.current(idx, i, oneSide || undefined)
-      if (at || hr) mutEntry(idx, en => { const set = en.sets[i]; if (!(oneSide ? set?.sides?.[oneSide]?.done : set?.done)) return; if (at) set.at = at; if (hr) set.hr = hr })
-    },
-    finish: () => { if (!useStore.getState().S.active?.editingWorkoutId) finishWorkoutNow() },
-    discard: () => { if (!useStore.getState().S.active?.editingWorkoutId) discardNow() },
-  }), [])
-
-  // The Lock Screen's Done (lib/live-activity.js) ticks its set through this same toggle, as if
-  // tapped here (rest timer, high-water mark, the end-of-workout sheet). The time is the tap's: the
-  // page may hear of it much later (lib/finish-workout.js sessionEnd reads the sets' times), and so
-  // is the rest's start.
-  const liveToggleRef = useRef(toggle)
-  liveToggleRef.current = toggle
-  useEffect(() => bindLiveActions({
-    setDone: (idx, i, { at }) => {
-      const A = useStore.getState().S.active
-      if (!A || A.editingWorkoutId || A.entries?.[idx]?.sets?.[i]?.done) return
-      const restBefore = useUI.getState().timer
-      liveToggleRef.current(idx, i)
-      if (!at) return
-      mutEntry(idx, en => { const set = en.sets[i]; if (set?.done) set.at = at })
-      // The rest this tick started began at the tap, which the Lock Screen has been counting
-      // down since: heard of late, it is shortened by that much, or over already.
-      const rest = useUI.getState().timer
-      const late = Math.floor((Date.now() - at) / 1000)
-      if (late > 1 && rest && rest !== restBefore && !rest.ready && !rest.paused) useUI.getState().addRest(-late)
-    },
-    // Next exercise and Skip rest: what this screen's own Next and the rest bar's Skip do.
-    next: idx => update(s => { if (s.active && !s.active.editingWorkoutId && s.active.entries?.[idx]) s.active.cur = idx }),
-    restSkip: () => useUI.getState().stopRest(),
-    timer: () => useUI.getState().timer,
-  }), [])
-
   // After the finished exercise folded away (toggle, above): the new current one is the next thing
   // to do, so if it now sits under the header or low on the screen with little more than its title
   // showing, it glides up under the header. Where it is already in reach the page stays put. Run

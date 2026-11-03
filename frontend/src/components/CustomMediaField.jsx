@@ -17,7 +17,6 @@ import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
 import { mediaOf, fmtClip } from '../lib/media-refs.js'
 import { mediaStore } from '../lib/media-store.js'
-import { MOBILE } from '../lib/mobile.js'
 import { limitsFrom, fmtMB, MB } from '../lib/media-limits.js'
 import { CustomThumb } from './CustomMedia.jsx'
 import { Row, Button } from './ui.jsx'
@@ -81,7 +80,7 @@ export function useMediaPicker() {
   // guest in the browser is on that same server, and what it picks would be owed and never sent
   // once it signs up; a phone in local mode has no server (a config left from an earlier pairing
   // says nothing about it).
-  const serverLacks = (!!user || !MOBILE) && !!config && !config.media
+  const serverLacks = !!config && !config.media
 
   const pick = async file => {
     if (!file) return null

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createRoot } from 'react-dom/client'
 import { DEF, useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
-import { finishWorkoutNow } from './sheets.jsx'
+import { doFinishWorkout } from './sheets.jsx'
 
 const clone = v => JSON.parse(JSON.stringify(v))
 const S = () => useStore.getState().S
@@ -50,7 +50,7 @@ afterEach(() => {
 describe('finish summary: keep an added exercise in the routine', () => {
   it('offers it, and one tap adds it with the setup of the session', async () => {
     install([clone(bench), clone(raise)])
-    act(() => finishWorkoutNow())
+    act(() => doFinishWorkout())
     renderTopSheet()
     await settle()
     expect(host.querySelector('[data-keep-in-routine]')).toBeTruthy()
@@ -66,7 +66,7 @@ describe('finish summary: keep an added exercise in the routine', () => {
 
   it('says nothing when the session added nothing', async () => {
     install([clone(bench)])
-    act(() => finishWorkoutNow())
+    act(() => doFinishWorkout())
     renderTopSheet()
     await settle()
     expect(host.querySelector('[data-keep-in-routine]')).toBeNull()

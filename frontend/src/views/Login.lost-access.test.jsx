@@ -9,7 +9,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
    and "I have a code", which redeems a recovery code like a device link. The phone app cannot
    make a passkey for the server, so there it says to use a browser and pair again. */
 const mocks = vi.hoisted(() => {
-  const state = { webauthn: true, config: null, sheets: [], MOBILE: false, redeem: null }
+  const state = { webauthn: true, config: null, sheets: [], redeem: null }
   state.snapshot = () => ({
     config: state.config, S: {}, user: null, linkCode: null,
     setUser: vi.fn(), adoptProfile: vi.fn(), setGuest: vi.fn(), loadConfig: vi.fn(async () => state.config),
@@ -33,7 +33,6 @@ vi.mock('../lib/api.js', () => ({
   api: vi.fn(), passkeyAssertion: vi.fn(), passwordLogin: vi.fn(), passwordRegister: vi.fn(), passwordResetRedeem: vi.fn(),
   createPasskey: vi.fn(),
 }))
-vi.mock('../lib/mobile.js', () => ({ get MOBILE() { return mocks.MOBILE }, nativePlatform: async () => null, isAndroid: async () => false }))
 vi.mock('../components/Passkeys.jsx', () => ({ openDeviceLinkRedeem: vi.fn(() => { mocks.redeem = true }) }))
 vi.mock('../lib/demo.js', () => ({ DEMO: false, REPO: 'https://example.invalid' }))
 vi.mock('../sheets.jsx', () => ({ askAddDeviceData: vi.fn(), confirmSheet: vi.fn() }))
@@ -88,11 +87,5 @@ describe('LostAccessSheet', () => {
     act(() => button(host, 'I have a code').click())
     expect(close).toHaveBeenCalled()
     expect(mocks.redeem).toBe(true)
-  })
-  it('in the phone app: a browser first, then pair again; no code field here', () => {
-    mocks.MOBILE = true
-    const host = mount(<LostAccessSheet close={vi.fn()} />)
-    expect(host.textContent).toContain('pair the app again')
-    expect(button(host, 'I have a code')).toBeUndefined()
   })
 })

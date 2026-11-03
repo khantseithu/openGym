@@ -39,12 +39,9 @@ vi.mock('../store/useUI.js', () => {
   return { useUI }
 })
 vi.mock('react-router-dom', () => ({ useNavigate: () => to => mocks.navs.push(to) }))
-vi.mock('../lib/mobile.js', () => ({ get MOBILE() { return mocks.MOBILE } }))
 vi.mock('../lib/demo.js', () => ({ get DEMO() { return mocks.DEMO }, get NO_SERVER() { return mocks.DEMO } }))
 vi.mock('../lib/api.js', () => ({ webauthnOK: () => mocks.webauthn, passkeyLogin: (...a) => mocks.passkeyLogin(...a) }))
 vi.mock('../sheets.jsx', () => ({ askAddDeviceData: vi.fn() }))
-// What the connect sheet was opened with is the point; its own form is tested elsewhere.
-vi.mock('../views/MobileOnboarding.jsx', () => ({ ConnectSheet: props => <div className="connect" data-url={props.initialUrl ?? ''} data-again={String(!!props.again)} /> }))
 
 const BASE = 'https://gym.example.com'
 const sync = (status, extra = {}) => ({ status, offline: false, pending: false, auth: false, lastError: null, lastSynced: 0, server: BASE, ...extra })
@@ -169,26 +166,6 @@ describe('not connected — it says so, and what to do', () => {
     expect(text()).toBe('Your server’s address answered with something other than openGym (HTTP 200). Your changes are kept here.')
   })
 
-  it('phone refused by its server: "Pair again" opens the connect sheet with the address it had', () => {
-    mocks.MOBILE = true
-    mocks.sync = sync('auth', { auth: true, pending: true, lastError: { status: 401, code: 'auth' } })
-    render()
-    expect(text()).toBe('Your server no longer accepts this phone. Your changes are kept here.')
-    expect(label()).toBe('Pair again')
-    act(() => button().click())
-    const sheet = openedConnect()
-    expect(sheet.dataset.url).toBe(BASE)
-    expect(sheet.dataset.again).toBe('true')
-  })
-
-  it('a phone an earlier version unpaired has no address left: pairing asks for it', () => {
-    mocks.MOBILE = true
-    mocks.sync = sync('auth', { auth: true, pending: true, server: null, lastError: { status: 0, code: 'not-paired' } })
-    render()
-    expect(text()).toBe('This phone is no longer paired with your server. Your changes are kept here.')
-    act(() => button().click())
-    expect(openedConnect().dataset.url).toBe('')
-  })
 
   it('browser refused mid-session: "Sign in" is the passkey, right there', async () => {
     mocks.sync = sync('auth', { auth: true, pending: true, lastError: { status: 401, code: 'auth' } })
@@ -208,28 +185,6 @@ describe('not connected — it says so, and what to do', () => {
 })
 
 describe('no server at all', () => {
-  // #454, #369: local use on a phone is a choice, so no bar for it. Settings still names it and
-  // offers Connect (the line); only a server the phone was paired with can be missing.
-  it('a phone kept local shows no bar at all, only the Settings line says it', () => {
-    mocks.MOBILE = true
-    mocks.user = null
-    mocks.guest = true
-    mocks.sync = sync('local', { server: null })
-    render()
-    expect(bar()).toBeNull()
-    expect(conn()).toBe('')
-    const view = connectionView(sync('local', { server: null }), { mobile: true })
-    expect(view.banner).toBeNull()
-    expect(view.line).toBe('On this phone only, not connected to a server')
-    expect(view.action).toBe('connect')
-  })
-
-  it('a paired phone whose server cannot be reached still hears it', () => {
-    mocks.MOBILE = true
-    mocks.sync = sync('offline', { pending: true })
-    render()
-    expect(text()).toBe('Your server can’t be reached. Your changes are saved on this device and sync once it answers again.')
-  })
 
   it('a guest in a browser: "Sign in" leads to Settings, where signing in and creating a profile are', () => {
     mocks.user = null
@@ -264,16 +219,6 @@ describe('no server at all', () => {
 // The quiet line has an × that hides it; a problem with a server never gets one.
 describe('hiding the no-server line', () => {
   const close = () => host.querySelector('.conn-x')
-
-  it('a phone kept local never shows the line, so there is nothing to close (#454)', () => {
-    mocks.MOBILE = true
-    mocks.user = null
-    mocks.guest = true
-    mocks.sync = sync('local', { server: null })
-    render()
-    expect(bar()).toBeNull()
-    expect(conn()).toBe('')
-  })
 
   it('a guest in a browser: the × hides the line, and Settings is not opened by it', () => {
     mocks.user = null
@@ -325,14 +270,6 @@ describe('where it never shows', () => {
     expect(bar()).toBeNull()
   })
 
-  it('the phone\'s first-launch choice', () => {
-    mocks.MOBILE = true
-    mocks.user = null
-    mocks.onboarding = true
-    mocks.sync = sync('local', { server: null })
-    render()
-    expect(bar()).toBeNull()
-  })
 })
 
 describe('a change waiting while the server is reachable', () => {
@@ -414,9 +351,9 @@ describe('with the connection status switched off', () => {
     expect(trouble()).toBe(true)
   })
 
-  it('never for a phone kept local or a guest: no server is a choice, not a fault', () => {
+  it('never for a guest: no server is a choice, not a fault', () => {
     mocks.S = { connStatus: false }
-    Object.assign(mocks, { MOBILE: true, user: null, guest: true, sync: sync('local', { server: null }) })
+    Object.assign(mocks, { user: null, guest: true, sync: sync('local', { server: null }) })
     both()
     expect(trouble()).toBe(false)
     Object.assign(mocks, { MOBILE: false, user: null, guest: true, sync: sync('local') })

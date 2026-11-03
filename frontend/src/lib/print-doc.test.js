@@ -10,14 +10,6 @@ describe('print-doc', () => {
     expect(esc('<b>"A&B"</b>')).toBe('&lt;b&gt;&quot;A&amp;B&quot;&lt;/b&gt;')
   })
 
-  it('starts the print sheet on Letter where people use it, A4 everywhere else', () => {
-    expect(paperFor('en-US')).toBe('letter')
-    expect(paperFor('es_MX')).toBe('letter')
-    expect(paperFor('en-GB')).toBe('a4')
-    expect(paperFor('de')).toBe('a4')
-    expect(paperFor('')).toBe('a4')
-  })
-
   it('builds the page-number line from the translation, numbers anywhere in it', () => {
     expect(pageNumberContent()).toBe('"Page " counter(page) " of " counter(pages)')
     _setLangState('ko', { 'Page {0} of {1}': '{1}쪽 중 {0}쪽' }, null, null)

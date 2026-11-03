@@ -11,7 +11,7 @@ import { PAGES, PAGE_IDS, ROOT_GROUPS, SEARCH, pageVisible, searchSettings, page
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 const mocks = vi.hoisted(() => {
-  const state = { S: null, user: null, sync: null, config: null, MOBILE: false, push: false, sheets: [], navs: [], toast: null }
+  const state = { S: null, user: null, sync: null, config: null, push: false, sheets: [], navs: [], toast: null }
   state.snapshot = () => ({
     S: state.S, user: state.user, coachLocal: null, sync: state.sync, config: state.config,
     update: mut => { const next = structuredClone(state.S); mut(next); state.S = next },
@@ -35,8 +35,6 @@ vi.mock('react-router-dom', () => ({ useNavigate: () => (...a) => mocks.navs.pus
 vi.mock('../lib/api.js', () => ({ api: vi.fn(path => Promise.resolve(path === '/api/account/passkeys' ? { passkeys: [] } : {})), webauthnOK: () => false, passkeyLogin: vi.fn(), passkeyRegister: vi.fn(), IS_ANDROID: false }))
 vi.mock('../lib/push.js', () => ({ pushSupported: () => mocks.push, enablePush: vi.fn(), disablePush: vi.fn(), sendTestPush: vi.fn(), syncPushSubscription: vi.fn(() => Promise.resolve(mocks.pushOn)) }))
 vi.mock('../lib/wakelock.js', () => ({ wakeLockSupported: () => true }))
-vi.mock('../lib/mobile.js', () => ({ get MOBILE() { return mocks.MOBILE }, isAndroid: () => Promise.resolve(false), shareExport: vi.fn(), shareExportBlob: vi.fn(), syncReminder: vi.fn() }))
-vi.mock('./MobileOnboarding.jsx', () => ({ ConnectSheet: () => null }))
 vi.mock('../sheets.jsx', () => ({
   starterPlanSheet: vi.fn(), confirmSheet: vi.fn(), importFromApp: vi.fn(), importFromHevy: vi.fn(),
   equipmentProfileSheet: vi.fn(), plateInventorySheet: vi.fn(), menuSheet: vi.fn(),
@@ -56,7 +54,6 @@ beforeEach(() => {
   mocks.user = null
   mocks.sync = null
   mocks.config = null
-  mocks.MOBILE = false
   mocks.push = false
   mocks.pushOn = false
   mocks.toast = vi.fn()
@@ -79,7 +76,7 @@ const titles = () => [...host.querySelectorAll('.lrow .lrow-t')].map(e => e.text
 
 // This test's guest in a browser, as the page itself sees it.
 const guestWeb = {
-  user: null, mobile: false, android: false, demo: false, wakeOK: true, hasMedia: false, pwOn: false, webauthn: false,
+  user: null, demo: false, wakeOK: true, hasMedia: false, pwOn: false, webauthn: false,
   sound: true, playOnSilent: false, canVibrate: true, vibrate: true, profiles: true, nameLang: false,
   pushOK: false, reminderOn: false, nudge: false, autoBackup: false, synced: false, installTip: true, androidWeb: false,
   // the test browser (happy-dom) is neither Android nor Apple, so the page shows the desktop install tip
@@ -126,28 +123,20 @@ describe('the root', () => {
     expect(rowTitled('Workout').querySelector('.lrow-v').textContent).toBe('No rest timer · Cards')
   })
 
-  it('signed in, Reminders is there and the card names the account; on the phone app the Coach too', () => {
+  it('signed in, Reminders is there and the card names the account', () => {
     mocks.user = { id: 'u1', name: 'Dana' }
     mount()
     expect(titles()).toContain('Reminders')
     expect(titles()).not.toContain('AI Coach')
     expect(host.querySelector('.sp-acct .lrow-t').textContent).toBe('Dana')
     expect(host.querySelector('.sp-avatar').textContent).toBe('D')
-    mocks.user = null
-    mocks.MOBILE = true
-    mount()
-    expect(titles()).toContain('Reminders')
-    expect(titles()).toContain('AI Coach')
-    expect(host.querySelector('.sp-acct .lrow-t').textContent).toBe('This phone')
   })
 
-  it('a row opens its page; the Coach row opens the phone Coach setup; the card opens Account', () => {
-    mocks.MOBILE = true
+  it('a row opens its page; the card opens Account', () => {
     mount()
     act(() => rowTitled('Timer alerts').click())
-    act(() => rowTitled('AI Coach').click())
     act(() => host.querySelector('.sp-acct').click())
-    expect(mocks.navs).toEqual([['/settings/alerts'], ['/coach/setup'], ['/settings/account']])
+    expect(mocks.navs).toEqual([['/settings/alerts'], ['/settings/account']])
   })
 
   it('in a hosted app, an admin gets the Coach row too, straight to the Coach card of the admin dashboard', () => {
@@ -199,14 +188,11 @@ describe('the search lands on a row', () => {
   const scenarios = {
     'guest in a browser': () => {},
     'signed in, browser without push': () => { mocks.user = { id: 'u1', name: 'Dana' }; mocks.sync = { status: 'ok', server: 'https://gym.example' } },
-    'phone, reminder off': () => { mocks.MOBILE = true },
-    'phone, reminder and nudge on': () => { mocks.MOBILE = true; mocks.S.reminder = { on: true, time: '17:30', nudge: true }; mocks.S.autoBackup = true },
-    'phone paired with a server': () => { mocks.MOBILE = true; mocks.user = { id: 'u1', name: 'Dana' }; mocks.sync = { status: 'ok', server: 'https://gym.example' } },
   }
   const ctxNow = () => ({
-    ...guestWeb, user: mocks.user, mobile: mocks.MOBILE, pushOK: !mocks.MOBILE && mocks.push,
+    ...guestWeb, user: mocks.user, pushOK: mocks.push,
     reminderOn: !!mocks.S.reminder?.on, nudge: !!mocks.S.reminder?.nudge, autoBackup: !!mocks.S.autoBackup,
-    synced: !!mocks.sync, installTip: !mocks.MOBILE, hasMedia: false, wakeOK: true,
+    synced: !!mocks.sync, installTip: true, hasMedia: false, wakeOK: true,
   })
   for (const [name, setUp] of Object.entries(scenarios)) it(name, async () => {
     setUp()
@@ -237,8 +223,6 @@ describe('the search lands on a row', () => {
     expect(searchSettings('install', { ...web, androidWeb: true, desktopWeb: false }, tr).map(h => h.title)).toEqual(['In Chrome: ⋮ menu → Add to Home screen'])
     // Windows and Linux are neither: Chrome's install icon, not an iPhone's Share menu (night QA 10-19).
     expect(searchSettings('install', web, tr).map(h => h.title)).toEqual(['In Chrome or Edge: the install icon in the address bar'])
-    expect(searchSettings('backup folder', { ...guestWeb, mobile: true, android: true, autoBackup: true }, tr).map(h => h.title)).toEqual(['Backup folder'])
-    expect(searchSettings('backup folder', { ...guestWeb, mobile: true, android: true }, tr)).toEqual([])
   })
 
   // Checked in Chrome, signed in on the web: "gym" offered the Gym reminder page, a phone-only
@@ -248,7 +232,6 @@ describe('the search lands on a row', () => {
     const web = { ...guestWeb, user: { id: 'u' }, synced: true, pushOK: true }
     expect(pageVisible('reminders', web)).toBe(true)
     expect(searchSettings('gym reminder', web, tr).map(h => h.title)).not.toContain('Gym reminder')
-    expect(searchSettings('gym reminder', { ...web, mobile: true }, tr).map(h => h.title)).toContain('Gym reminder')
   })
 
   it('a web reminder row waits for push to answer, and flashes Push notifications when it stays off', async () => {
@@ -437,10 +420,7 @@ describe('searchSettings', () => {
     expect(searchSettings('nudge', { ...guestWeb, user: { id: 'u' } }, tr)).toEqual([])         // no push in this browser
     expect(searchSettings('nudge', { ...guestWeb, user: { id: 'u' }, pushOK: true }, tr)).toEqual([])   // the reminder is off
     expect(searchSettings('nudge', { ...guestWeb, user: { id: 'u' }, pushOK: true, reminderOn: true }, tr).map(h => h.title)).toEqual(['Nudge me when I skip a planned workout'])
-    expect(searchSettings('nudge', { ...guestWeb, mobile: true, reminderOn: true }, tr).map(h => h.title)).toEqual(['Nudge me when I skip a planned workout'])
     expect(searchSettings('coach', guestWeb, tr)).toEqual([])
-    expect(searchSettings('coach', { ...guestWeb, mobile: true }, tr)[0].page).toBe('coach')
-    expect(searchSettings('vibrate silent', { ...guestWeb, mobile: true, android: true }, tr).map(h => h.title)).toEqual(['Vibrate on silent too'])
     expect(searchSettings('   ', guestWeb, tr)).toEqual([])
   })
 

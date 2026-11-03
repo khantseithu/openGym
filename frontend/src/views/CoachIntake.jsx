@@ -15,12 +15,11 @@ import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
 import { DAYN } from '../lib/format.js'
 import { EXDB } from '../lib/exercises.js'
-import { emptyCoach, coachAvailable, hasConsent, CONSENT_VERSION, CATEGORY_TEXT, appendChat, defaultTrainingDays } from '../lib/coach.js'
+import { emptyCoach, hasConsent, CONSENT_VERSION, CATEGORY_TEXT, appendChat, defaultTrainingDays } from '../lib/coach.js'
 import { requestPlan, disclosure, JOB_ERRORS, isDeclined, coachVia } from '../lib/coach-api.js'
 import { consentTarget, allowAi } from '../lib/coach-consent.js'
 import { DEMO } from '../lib/demo.js'
 import { useCoachGate } from '../lib/use-coach-gate.js'
-import { MOBILE } from '../lib/mobile.js'
 import { activeProfile } from '../lib/equipment.js'
 import Icon from '../components/Icon.jsx'
 import { Button, TextArea } from '../components/ui.jsx'
@@ -63,7 +62,6 @@ export default function CoachIntake() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
-  const coachMode = useStore(s => s.coachLocal?.mode)
   const update = useStore(s => s.update)
   const toast = useUI(s => s.toast)
   const [needConsent] = useState(() => !editing && !hasConsent(S))
