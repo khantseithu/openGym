@@ -79,6 +79,7 @@ describe('vercel.json', () => {
     expect(cfg.builds.map(b => b.use)).toEqual(['@vercel/static-build'])
     const api = cfg.routes.find(r => r.status === 404 && new RegExp('^' + r.src + '$').test('/api/me'))
     expect(api).toBeTruthy()
+    for (const r of cfg.routes.filter(r => r.status === 404)) expect(r.headers['Cache-Control']).toBe('no-store')
   })
   it('keeps the licensed media to its own origin', () => {
     const media = cfg.routes.find(r => r.src.startsWith('/exercise-media'))

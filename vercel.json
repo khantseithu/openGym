@@ -47,11 +47,17 @@
     },
     {
       "src": "/(api|assets|exercise-media|app-icons)(/.*)?",
-      "status": 404
+      "status": 404,
+      "headers": {
+        "Cache-Control": "no-store"
+      }
     },
     {
       "src": "/.*\\.[^/]*",
-      "status": 404
+      "status": 404,
+      "headers": {
+        "Cache-Control": "no-store"
+      }
     },
     {
       "src": "/(.*)",
